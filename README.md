@@ -1,59 +1,234 @@
-# ShenLong
-![image](https://github.com/user-attachments/assets/849f0f2b-7cf6-4607-b9cc-0a3e36eeaefe)
-## Table of Contents
+# Bloody Roar 2 Reinforcement Learning System
 
-- [About](#About)
-- [Getting Started](#getting-started)
-- [Refernces](#References)
-- [Procedure Followed](#Procedure-Followed)
-- [License](#license)
-- [Contact](#contact)
-## About
-I've named this project as Shenlong as he is the final most boss of the popular fighting game "Bloody Roar 2"(Also provided in this repositoryby the name Bloody Roar 2 game.exe).<br><br>
-Coming to the main point ,Shenlong(This project) is a python program/bot which leverages the Computer-Vision and Deep Learning technique to play the mentioned game autonomously.It can perfectly 
-immitate the gameplay at a level similar to a 12 yr old kid who knows only 2 buttons
-of the keyboard and knows only 3 character moves.
-<br><br>
-Things Shenlong cannot do - <br>
-1)Play better than a 12yr old knowing 3 keyboard buttons <br>
-2)Play better than a 12 yr old knowing 4 character moves.<br>
-3)Play better than a 13yr old (Doesn't matter how many buttons or moves he/she knows).
-<br><br>
+A real-time game state capture and reinforcement learning system for Bloody Roar 2 running on BizHawk emulator.
 
-## Getting Started
-Before getting started make sure u have python installed on you device<br>
-1. **Clone this repository / Download the ZIP File**:
-    ```bash
-    git clone https://github.com/prathamk1483/ShenLong.git
-    ```
-2. **Open "Bloody Roar 2 game.exe" already present in the repo**
-3. **Make sure that this game is running in the top-left corner of the screen exactly as shown**
-   ![image](https://github.com/user-attachments/assets/3a791a38-f46a-4ce0-b5d3-85badf99163f)
-This is because I've hardcoded the programe to capture screen 600x480 (width x height) from the top left corner with co-ordinates(0,0).<br>
-5. **Run main.py**
-   ![image](https://github.com/user-attachments/assets/16caf276-dd6c-4bb5-a6b0-9b02c8daf7fe)
-   <br>
-   <br>
-   <br>
-   It will take some time to import all the required libraries and packages and will start <br>
-   Till then make sure the game window is visible to you, if not - bring the game window to the front (the program can run in the background as well)<br><br><br>
-   ![image](https://github.com/user-attachments/assets/0c679acb-128a-41f3-8ebe-5f0543e1a34e)
-   <br>
-   <br>
-   <br>
-   Once the progam is finished importing files and libraries , a new window with title **BONES** will pop-up, make sure to move it aside if it pop above the game window.
-   <br><br><br>
-   ![image](https://github.com/user-attachments/assets/860f1bfd-696c-42c5-96e2-c4fa03c9b99e)
-   <br><br><br>
-   ![image](https://github.com/user-attachments/assets/2bf49c38-90bd-4e99-be6e-8d179b82926d)
+## 🎮 Overview
 
-6. **Enjoy The Game Play**
+This project implements a complete pipeline for training RL agents to play Bloody Roar 2:
+- Real-time game state capture from BizHawk emulator
+- Health bar detection using computer vision
+- Fighter position tracking using YOLO
+- Normalized state representation for neural networks
+- Action execution through BizHawk's Lua scripting
 
-## References
+## 📁 Project Structure
 
-1.**[Open CV Documentation](https://docs.opencv.org/4.x/index.html)** <br><br>
-2.The tutorials from **Sentdex** from the **Python Plays** helped greatly - [Click Here](https://youtube.com/playlist?list=PLQVvvaa0QuDeETZEOy4VdocT7TOjfSA8a&si=qLG1v8TMi4IGfu4e )
+```
+bro2_rl/
+├── Core Systems
+│   ├── window_capture.py      # Efficient window/region capture from BizHawk
+│   ├── health_detector.py      # Yellow health bar detection (color masking)
+│   ├── fighter_detector.py     # YOLO-based fighter position tracking
+│   └── game_controller.py      # File-based action execution system
+│
+├── State Management
+│   ├── game_state.py          # Unified game state representation
+│   ├── state_normalizer.py    # Converts state to RL-ready observations
+│   ├── state_history.py       # Tracks history, calculates velocities
+│   └── game_state_monitor.py  # Main orchestrator combining all systems
+│
+├── Testing
+│   ├── test_game_monitor.py   # Full system test with visualization
+│   ├── test_state_structure.py # State representation tests
+│   └── test_window_capture.py  # Window capture tests
+│
+└── notebooks/                 # Jupyter notebooks for analysis
+```
 
-## Procedure Followed (Coming Soon)
+## 🚀 Current Implementation
 
+### 1. Window Capture System
+- Captures game frames from BizHawk emulator window
+- Supports full window and region capture
+- Handles window finding and error cases
+- ~30+ FPS capture rate
 
+### 2. Health Detection
+- Detects yellow health bar pixels using BGR color masking
+- Range: BGR(0,160,190) to BGR(20,180,220)
+- Calculates health percentage (0-100%)
+- Positions: P1 at x=505, P2 at x=1421, y=155
+
+### 3. Fighter Detection
+- Uses YOLOv8n for person detection
+- Filters UI elements (y > 100)
+- Tracks P1/P2 based on screen position
+- Calculates distance between fighters
+
+### 4. State Representation
+**12-value observation vector** normalized to [-1, 1]:
+```
+[0-4]  Agent (P1):     health, x, y, velocity_x, velocity_y
+[5-9]  Opponent (P2):  health, relative_x, relative_y, velocity_x, velocity_y
+[10]   Distance:       Normalized distance between fighters
+[11]   Facing:         Direction (1 or -1)
+```
+
+### 5. Action System
+File-based communication with BizHawk Lua script:
+- Actions: "punch", "kick", "left", "right", "up", "down", etc.
+- 300ms delay between actions
+- Writes to: `C:\Users\richa\Desktop\Personal\Uni\ShenLong\actions.txt`
+
+## 🎯 Setup Instructions
+
+### Prerequisites
+1. **BizHawk Emulator** with Bloody Roar 2 ROM
+2. **Python 3.8+** with packages:
+   ```bash
+   pip install numpy opencv-python ultralytics
+   ```
+3. **YOLO Model**: Download yolov8n.pt to project directory
+
+### BizHawk Lua Script
+Create a Lua script in BizHawk that reads from `actions.txt`:
+```lua
+local actions_file = "C:\\Users\\richa\\Desktop\\Personal\\Uni\\ShenLong\\actions.txt"
+
+while true do
+    local file = io.open(actions_file, "r")
+    if file then
+        local action = file:read("*all")
+        file:close()
+        
+        -- Map actions to button presses
+        if action == "punch" then
+            joypad.set({["P1 Square"] = true}, 1)
+        elseif action == "kick" then
+            joypad.set({["P1 X"] = true}, 1)
+        -- Add more mappings...
+        end
+        
+        -- Clear the file
+        file = io.open(actions_file, "w")
+        file:write("")
+        file:close()
+    end
+    emu.frameadvance()
+end
+```
+
+### Running the System
+1. Start BizHawk with Bloody Roar 2
+2. Load the Lua script in BizHawk
+3. Run the test:
+   ```bash
+   python test_game_monitor.py
+   ```
+
+## 📊 Testing the System
+
+The test script shows:
+- **Game View**: Live game with health bars and fighter detection overlays
+- **Observation Vector**: Bar graph of the 12 normalized values
+- **Console Output**: Real-time positions, health, and distance
+
+Expected output:
+```
+P1: (500, 400) HP:85.0% | P2: (900, 420) HP:70.0% | Dist:400
+```
+
+## 🔧 Configuration
+
+### Health Detection (`health_detector.py`)
+```python
+HealthBarConfig:
+    p1_x: 505           # P1 health bar X position
+    p2_x: 1421          # P2 health bar X position  
+    bar_length: 400     # Health bar width
+    bar_y: 155          # Y position
+    health_drop_per_pixel: 0.25  # % health per pixel
+```
+
+### Fighter Detection (`fighter_detector.py`)
+```python
+FighterDetector:
+    confidence_threshold: 0.3  # YOLO confidence
+    min_y_position: 100       # Filter UI elements
+```
+
+## 🚧 Next Steps
+
+### 1. Create Gym Environment (`br2_env.py`)
+```python
+class BR2Environment(gym.Env):
+    def __init__(self):
+        self.observation_space = spaces.Box(-1, 1, shape=(12,))
+        self.action_space = spaces.Discrete(10)  # punch, kick, move, etc.
+        
+    def step(self, action):
+        # Execute action
+        # Capture new state
+        # Calculate reward
+        # Return obs, reward, done, info
+        
+    def reset(self):
+        # Reset match
+        # Return initial observation
+```
+
+### 2. Implement Reward Function
+```python
+def calculate_reward(prev_state, curr_state):
+    # Damage dealt (+10 per % damage)
+    damage_dealt = prev_state.player2.health - curr_state.player2.health
+    
+    # Damage taken (-10 per % damage)
+    damage_taken = prev_state.player1.health - curr_state.player1.health
+    
+    # Time penalty (-0.1 per frame)
+    # Win bonus (+100)
+    # Distance reward (optional)
+    
+    return reward
+```
+
+### 3. Train RL Agent
+Using Stable Baselines3:
+```python
+from stable_baselines3 import PPO
+
+env = BR2Environment()
+model = PPO("MlpPolicy", env, verbose=1)
+model.learn(total_timesteps=1000000)
+```
+
+### 4. Advanced Features
+- **Combo Detection**: Track action sequences for combo rewards
+- **Frame Data Collection**: Learn optimal move timings
+- **Character-Specific Models**: Different models per character
+- **Self-Play**: Train against previous versions
+- **Curriculum Learning**: Start with stationary opponent
+
+### 5. Evaluation Metrics
+- Win rate over time
+- Average damage dealt/taken
+- Action distribution analysis
+- State visitation heatmaps
+
+## 🐛 Troubleshooting
+
+### "Window not found" Error
+- Ensure BizHawk window title exactly matches: `"Bloody Roar II (USA) [PlayStation] - BizHawk"`
+- Window must be visible (not minimized)
+
+### Low FPS
+- Reduce YOLO confidence threshold
+- Skip frames (process every 2-3 frames)
+- Use smaller YOLO model
+
+### Detection Issues
+- Adjust color ranges for health bars
+- Modify YOLO confidence threshold
+- Check Y position filter for fighters
+
+## 📝 Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Test thoroughly with `test_game_monitor.py`
+4. Submit pull request with clear description
+
+## 📄 License
+
+This project is for educational and research purposes only.
