@@ -46,7 +46,7 @@ class StateNormalizer:
             np.clip(rel_state['opponent_velocity_y'] / self.config.max_velocity, -1, 1),
             
             # Interaction (2 values)
-            min(rel_state['distance'] / self.config.max_distance, 1.0),  # [0, 1]
+            min(rel_state['distance'] / self.config.max_distance, 1.0) if rel_state['distance'] is not None else 0.5,  # [0, 1]
             1.0 if rel_state['opponent_relative_x'] > 0 else -1.0,  # Facing direction
         ], dtype=np.float32)
         

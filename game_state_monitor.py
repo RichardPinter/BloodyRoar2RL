@@ -60,7 +60,7 @@ class GameStateMonitor:
                 y=fighter_detection.player2.center[1],
                 health=health_state.p2_health
             ),
-            distance=fighter_detection.distance,
+            distance=fighter_detection.distance if fighter_detection.distance is not None else 0.0,
             frame_time=current_time
         )
         
