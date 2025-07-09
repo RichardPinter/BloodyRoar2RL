@@ -1,6 +1,7 @@
 # state_normalizer.py
 import numpy as np
 from dataclasses import dataclass
+from typing import Optional
 from game_state import GameState
 
 @dataclass
