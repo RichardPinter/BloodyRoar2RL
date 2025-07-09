@@ -29,20 +29,26 @@ class BR2Environment(gym.Env):
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0, shape=(12,), dtype=np.float32
         )
-        self.action_space = spaces.Discrete(10)
+        self.action_space = spaces.Discrete(16)
         
-        # Action mapping
+        # Action mapping - More fighting moves!
         self.action_map = {
             0: None,           # No action
             1: "left",         # Move left
             2: "right",        # Move right
             3: "up",           # Jump/up
             4: "down",         # Crouch/down
-            5: "punch",        # Punch
-            6: "kick",         # Kick
-            7: "block",        # Block
-            8: "beast",        # Beast transformation
-            9: "special"       # Special move
+            5: "punch",        # Light punch
+            6: "kick",         # Light kick
+            7: "heavy_punch",  # Heavy punch
+            8: "heavy_kick",   # Heavy kick
+            9: "block",        # Block/defend
+            10: "grab",        # Grab/throw
+            11: "jump_punch",  # Jump + punch
+            12: "jump_kick",   # Jump + kick
+            13: "crouch_punch", # Down + punch
+            14: "crouch_kick", # Down + kick
+            15: "beast"        # Beast transformation
         }
         
         # State tracking
@@ -65,9 +71,34 @@ class BR2Environment(gym.Env):
         Returns:
             observation, reward, done, info
         """
-        # Execute action
-        if action in self.action_map and self.action_map[action] is not None:
-            self.controller.send_action(self.action_map[action])
+        # Execute action using appropriate controller method
+        action_name = self.action_map.get(action)
+        if action_name is not None:
+            if action_name == "punch":
+                self.controller.punch()
+            elif action_name == "kick":
+                self.controller.kick()  
+            elif action_name == "heavy_punch":
+                self.controller.heavy_punch()
+            elif action_name == "heavy_kick":
+                self.controller.heavy_kick()
+            elif action_name == "grab":
+                self.controller.grab()
+            elif action_name == "jump_punch":
+                self.controller.jump_punch()
+            elif action_name == "jump_kick":
+                self.controller.jump_kick()
+            elif action_name == "crouch_punch":
+                self.controller.crouch_punch()
+            elif action_name == "crouch_kick":
+                self.controller.crouch_kick()
+            elif action_name == "beast":
+                self.controller.beast()
+            elif action_name == "block":
+                self.controller.send_action("l2")  # Block button
+            else:
+                # Basic movements
+                self.controller.send_action(action_name)
         
         # Small delay to let action take effect
         time.sleep(0.05)
@@ -191,9 +222,9 @@ class BR2Environment(gym.Env):
         if self.current_state is None:
             return True
         
-        # End if either player's health is 0 or below
-        if (self.current_state.player1.health <= 0 or 
-            self.current_state.player2.health <= 0):
+        # End if either player's health is very low (round is over)
+        if (self.current_state.player1.health <= 5 or 
+            self.current_state.player2.health <= 5):
             return True
         
         return False

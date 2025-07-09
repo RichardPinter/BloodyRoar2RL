@@ -54,8 +54,8 @@ def test_environment():
     total_reward = 0
     step_count = 0
     
-    # Test different actions
-    test_actions = [0, 1, 2, 5, 6, 7]  # none, left, right, punch, kick, block
+    # Test different actions - focus on fighting moves
+    test_actions = [0, 5, 6, 7, 8, 10, 11, 12]  # none, punch, kick, heavy_punch, heavy_kick, grab, jump_punch, jump_kick
     
     for action in test_actions:
         try:

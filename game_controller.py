@@ -97,6 +97,39 @@ class BizHawkController:
     
     def hold_down(self, frames=60):
         self.send_action(f"down:{frames}")
+    
+    # Compound fighting actions for RL environment
+    def heavy_punch(self):
+        """Heavy punch - typically triangle"""
+        self.send_action("triangle")
+    
+    def heavy_kick(self):
+        """Heavy kick - typically square"""
+        self.send_action("square")
+    
+    def grab(self):
+        """Grab/throw - typically R1"""
+        self.send_action("r1")
+    
+    def jump_punch(self):
+        """Jump + punch combo"""
+        self.send_action("up+x")
+    
+    def jump_kick(self):
+        """Jump + kick combo"""
+        self.send_action("up+circle")
+    
+    def crouch_punch(self):
+        """Crouch + punch combo"""
+        self.send_action("down+x")
+    
+    def crouch_kick(self):
+        """Crouch + kick combo"""
+        self.send_action("down+circle")
+    
+    def beast(self):
+        """Beast transformation"""
+        self.send_action("l1+l2")
 
 
 # Test functions
