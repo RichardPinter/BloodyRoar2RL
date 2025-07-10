@@ -71,12 +71,23 @@ class SlowRLEnvironment:
         self.controller = BizHawkController()
         
         # Actions for the environment
-        self.actions = ['kick', 'punch', 'forward', 'back', 'jump']
+        self.actions = [
+            'forward', 
+            'back', 
+            'jump', 
+            'squat',
+            'transform', 
+            'kick',       
+            'punch',         
+            'special', 
+            'block',        
+            'throw',   
+        ]
         self.action_space_size = len(self.actions)
         
         # Timing configuration
         self.sampling_interval = 1.0  # 1 second between samples
-        self.observation_window = 4   # 4 samples per action
+        self.observation_window = 8   # 4 samples per action
         
         # State tracking
         self.current_observations: List[SlowObservation] = []
