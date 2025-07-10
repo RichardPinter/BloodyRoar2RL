@@ -20,21 +20,25 @@ function execute_action(action_text)
     -- Clear previous inputs
     joypad.set({})
     
-    if action == "kick" or action == "circle" then
+    if action == "kick" then
         console.log("KICK!")
-        joypad.set({["P1 ○"] = true})
+        joypad.set({["P1 X"] = true})          -- X = Kick
         return true
-    elseif action == "punch" or action == "x" then
+    elseif action == "punch" then
         console.log("PUNCH!")
-        joypad.set({["P1 X"] = true})
+        joypad.set({["P1 ⬜"] = true})         -- Square = Punch
         return true
-    elseif action == "throw" or action == "square" then
-        console.log("THROW!")
-        joypad.set({["P1 ⬜"] = true})
+    elseif action == "transform" then
+        console.log("TRANSFORM!")
+        joypad.set({["P1 ○"] = true})          -- Circle = Transform
         return true
-    elseif action == "special" or action == "triangle" then
+    elseif action == "special" then
         console.log("SPECIAL!")
-        joypad.set({["P1 △"] = true})
+        joypad.set({["P1 △"] = true})          -- Triangle = Special
+        return true
+    elseif action == "throw" then
+        console.log("THROW!")
+        joypad.set({["P1 R2"] = true})         -- R2 = Throw
         return true
     elseif action == "block" or action == "r1" then
         console.log("BLOCK!")

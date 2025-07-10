@@ -1,6 +1,7 @@
 # test_all_controls_complete.py
 import time
 import os
+from controller_config import ACTIONS, get_button_name, get_all_actions
 
 class BizHawkController:
     def __init__(self):
@@ -86,7 +87,7 @@ class BizHawkController:
     def select(self):
         self.send_action("select")
     
-    # Missing methods for simple_action_test.py
+    # Action methods using centralized config
     def throw(self):
         self.send_action("throw")
     
@@ -97,6 +98,7 @@ class BizHawkController:
         self.send_action("block")
     
     def transform(self):
+        print("transform() method called!")  # DEBUG
         self.send_action("transform")
     
     def jump(self):
@@ -106,6 +108,14 @@ class BizHawkController:
     def squat(self):
         print("squat() method called!")  # DEBUG
         self.send_action("squat")
+    
+    def left(self):
+        print("left() method called!")  # DEBUG
+        self.send_action("left")
+    
+    def right(self):
+        print("right() method called!")  # DEBUG
+        self.send_action("right")
     
     # Hold actions
     def hold_right(self, frames=60):

@@ -13,7 +13,7 @@ from game_controller import BizHawkController
 
 def main():
     print("Simple Action Timing Test")
-    print("Type: kick, punch, throw, special, block, jump, squat, transform")
+    print("Type: kick, punch, special, block, jump, squat, transform, left, right")
     print("Press 'q' to quit")
     print("-" * 40)
     
@@ -98,6 +98,16 @@ def main():
                     print(f"*** TRANSFORM at frame {frame} ***")
                     action_frame = frame
                     action_name = "TRANSFORM"
+                elif command == "left":
+                    controller.left()
+                    print(f"*** LEFT at frame {frame} ***")
+                    action_frame = frame
+                    action_name = "LEFT"
+                elif command == "right":
+                    controller.right()
+                    print(f"*** RIGHT at frame {frame} ***")
+                    action_frame = frame
+                    action_name = "RIGHT"
                 command = ""
             elif key == 'q':
                 break
