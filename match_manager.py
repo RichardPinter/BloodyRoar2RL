@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 from round_sub_episode import RoundStateMonitor, RoundOutcome, GameState
+from health_detector import HealthDetector
+from window_capture import WindowCapture
 
 class MatchOutcome(Enum):
     """Possible outcomes of a match"""
@@ -63,9 +65,21 @@ class MatchManager:
     Uses RoundStateMonitor for individual round monitoring.
     """
     
-    def __init__(self, max_rounds: int = 3, rounds_to_win: int = 2):
+    def __init__(self, max_rounds: int = 3, rounds_to_win: int = 2, 
+                 window_title: str = "Bloody Roar II (USA) [PlayStation] - BizHawk"):
         self.max_rounds = max_rounds
         self.rounds_to_win = rounds_to_win
+        self.window_title = window_title
+        
+        # Initialize health detection for round transitions
+        try:
+            self.capture = WindowCapture(window_title)
+            self.health_detector = HealthDetector()
+            self.health_detection_available = True
+            print("✅ Health detection for round transitions initialized")
+        except Exception as e:
+            print(f"❌ Health detection failed: {e}")
+            self.health_detection_available = False
         
         # Match state
         self.stats = None
@@ -93,10 +107,13 @@ class MatchManager:
         
         return self._get_match_info()
     
-    def start_next_round(self) -> bool:
+    def start_next_round(self, wait_for_health_bars: bool = True) -> bool:
         """
         Start the next round in the match
         
+        Args:
+            wait_for_health_bars: Whether to wait for health bars before starting
+            
         Returns:
             True if round started, False if match is already finished
         """
@@ -112,21 +129,42 @@ class MatchManager:
         if self.current_round_monitor:
             self.current_round_monitor.close()
         
-        # Start new round
+        # Increment round number
         self.current_round_number += 1
         self.stats.total_rounds = self.current_round_number
         
         print(f"\n🔄 Starting Round {self.current_round_number}")
         print("-" * 40)
         
+        # Wait for health bars to appear (round transition)
+        if wait_for_health_bars and self.health_detection_available:
+            if not self.wait_for_round_ready():
+                print("❌ Failed to detect health bars - starting round anyway")
+        
         try:
-            self.current_round_monitor = RoundStateMonitor()
+            self.current_round_monitor = RoundStateMonitor(self.window_title)
             self.current_round_monitor.reset()
             print(f"✅ Round {self.current_round_number} ready")
             return True
         except Exception as e:
             print(f"❌ Failed to start round: {e}")
             return False
+    
+    def wait_for_round_ready(self, timeout: float = 30.0) -> bool:
+        """
+        Wait until the next round is ready (health bars visible)
+        
+        Args:
+            timeout: Maximum time to wait in seconds
+            
+        Returns:
+            True if round is ready, False if timeout or detection unavailable
+        """
+        if not self.health_detection_available:
+            print("⚠️  Health detection not available - skipping wait")
+            return True
+        
+        return self.health_detector.wait_for_health_bars(self.capture, timeout)
     
     def monitor_current_round(self) -> Optional[RoundResult]:
         """

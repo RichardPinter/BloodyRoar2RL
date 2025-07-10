@@ -1,5 +1,6 @@
 # health_detector.py
 import numpy as np
+import time
 from dataclasses import dataclass
 from typing import Tuple, Optional
 from window_capture import WindowCapture
@@ -34,6 +35,10 @@ class HealthDetector:
     
     def __init__(self, config: Optional[HealthBarConfig] = None):
         self.config = config or HealthBarConfig()
+        
+        # Throttling for health bar visibility checks
+        self.last_visibility_check = 0
+        self.visibility_check_interval = 0.1  # Check every 100ms
         
     def detect_health_from_strip(self, pixel_strip: np.ndarray, 
                                 reverse: bool = False) -> Tuple[float, int]:
@@ -149,6 +154,79 @@ class HealthDetector:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         
         return display
+    
+    def health_bars_visible(self, capture: WindowCapture) -> bool:
+        """
+        Check if health bars are visible (indicates we're in combat)
+        
+        Args:
+            capture: WindowCapture instance
+            
+        Returns:
+            True if health bars are visible and valid, False otherwise
+        """
+        # Throttle checks to avoid excessive computation
+        current_time = time.time()
+        if current_time - self.last_visibility_check < self.visibility_check_interval:
+            # Use cached result for recent checks
+            return hasattr(self, '_last_visibility_result') and self._last_visibility_result
+        
+        self.last_visibility_check = current_time
+        
+        try:
+            # Use existing detect method to check health bars
+            health_state = self.detect(capture)
+            
+            if health_state is not None:
+                # Health bars are visible if we get reasonable health values
+                p1_health = health_state.p1_health
+                p2_health = health_state.p2_health
+                
+                # Valid health values indicate visible health bars
+                if (p1_health >= 0 and p1_health <= 100 and 
+                    p2_health >= 0 and p2_health <= 100):
+                    
+                    self._last_visibility_result = True
+                    return True
+            
+            # If we can't detect valid health bars, they're not visible
+            self._last_visibility_result = False
+            return False
+            
+        except Exception as e:
+            print(f"Error checking health bar visibility: {e}")
+            self._last_visibility_result = False
+            return False
+    
+    def wait_for_health_bars(self, capture: WindowCapture, timeout: float = 30.0) -> bool:
+        """
+        Wait until health bars are visible (for round transitions)
+        
+        Args:
+            capture: WindowCapture instance
+            timeout: Maximum time to wait in seconds
+            
+        Returns:
+            True if health bars became visible, False if timeout
+        """
+        print("⏳ Waiting for health bars to appear...")
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            if self.health_bars_visible(capture):
+                elapsed = time.time() - start_time
+                print(f"✅ Health bars detected after {elapsed:.1f}s - ready to start!")
+                return True
+            
+            # Print status every 5 seconds
+            elapsed = time.time() - start_time
+            if elapsed > 0 and int(elapsed) % 5 == 0:
+                print(f"   Still waiting for health bars... ({elapsed:.1f}s elapsed)")
+            
+            time.sleep(0.5)  # Check every 500ms
+        
+        print(f"❌ Timeout waiting for health bars after {timeout}s")
+        return False
 
 
 # Test the health detector
