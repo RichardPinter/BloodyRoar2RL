@@ -1,367 +1,311 @@
+#!/usr/bin/env python3
+"""
+Round State Monitor
+
+This class is responsible for getting the states in the environment:
+- Health values (from health_detector.py)
+- Fighter positions and rotations (from fighter_detector.py) 
+- Win detection (health = 0 for 10+ frames)
+
+No actions/rewards/environment complexity - just pure state monitoring.
+"""
+
 import time
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from br2_env import BR2Environment
-from game_state import GameState
 from window_capture import WindowCapture
-from health_detector import HealthDetector, HealthBarConfig
+from health_detector import HealthDetector, HealthState
+from fighter_detector import FighterDetector, FighterDetection
 
 class RoundOutcome(Enum):
     """Possible outcomes of a round"""
     ONGOING = "ongoing"
-    PLAYER_WIN = "player_win"
-    PLAYER_LOSS = "player_loss"
+    PLAYER_WIN = "player_win"  # P1 wins
+    PLAYER_LOSS = "player_loss"  # P2 wins
     DRAW = "draw"
     TIMEOUT = "timeout"
     ERROR = "error"
 
 @dataclass
-class RoundStats:
-    """Statistics for a single round"""
-    start_time: float
-    end_time: Optional[float] = None
-    steps_taken: int = 0
-    total_reward: float = 0.0
-    final_p1_health: float = 0.0
-    final_p2_health: float = 0.0
-    outcome: RoundOutcome = RoundOutcome.ONGOING
+class GameState:
+    """Complete game state for one frame"""
+    # Health information
+    p1_health: float = 0.0  # 0-100%
+    p2_health: float = 0.0  # 0-100%
     
-    @property
-    def duration(self) -> float:
-        """Round duration in seconds"""
-        if self.end_time is None:
-            return time.time() - self.start_time
-        return self.end_time - self.start_time
+    # Fighter positions
+    p1_position: Optional[Tuple[int, int]] = None  # (x, y)
+    p2_position: Optional[Tuple[int, int]] = None  # (x, y)
+    p1_bbox: Optional[Tuple[int, int, int, int]] = None  # (x1, y1, x2, y2)
+    p2_bbox: Optional[Tuple[int, int, int, int]] = None  # (x1, y1, x2, y2)
     
-    @property
-    def is_finished(self) -> bool:
-        """Check if round is finished"""
-        return self.outcome != RoundOutcome.ONGOING
+    # Distance between fighters
+    fighter_distance: Optional[float] = None
+    
+    # Win detection state
+    p1_zero_frames: int = 0
+    p2_zero_frames: int = 0
+    round_outcome: RoundOutcome = RoundOutcome.ONGOING
+    
+    # Detection status
+    health_detection_working: bool = False
+    fighter_detection_working: bool = False
+    
+    # Timing
+    timestamp: float = 0.0
+    frame_count: int = 0
 
-class RoundSubEpisode:
+class RoundStateMonitor:
     """
-    Manages a single round of fighting within an arcade episode.
-    Wraps the BR2Environment and handles round-specific logic.
+    Monitors game state during a round - health, positions, and win conditions.
+    This class focuses purely on state observation, no actions or rewards.
     """
     
     def __init__(self, window_title: str = "Bloody Roar II (USA) [PlayStation] - BizHawk"):
-        # Initialize the underlying environment
-        self.env = BR2Environment(window_title)
         self.window_title = window_title
         
-        # Initialize health detection
+        # Initialize detection systems
         try:
             self.capture = WindowCapture(window_title)
             self.health_detector = HealthDetector()
-            self.health_detection_available = True
+            self.health_available = True
+            print("✅ Health detection initialized")
         except Exception as e:
-            print(f"Warning: Health detection not available: {e}")
-            self.health_detection_available = False
-        
-        # Round state
-        self.stats = None
-        self.is_active = False
-        self.max_round_time = 120.0  # 2 minutes max per round
-        
-        # Win detection state
-        self.p1_zero_frames = 0
-        self.p2_zero_frames = 0
-        self.zero_threshold = 10  # Consecutive zero frames needed for death
-        self.p1_health_pct = 0.0
-        self.p2_health_pct = 0.0
-        
-        print("RoundSubEpisode initialized with health detection")
-    
-    def reset(self) -> np.ndarray:
-        """
-        Reset the round and start a new one
-        
-        Returns:
-            Initial observation
-        """
-        print("Starting new round...")
-        
-        # Reset the underlying environment
-        observation = self.env.reset()
-        
-        # Initialize round stats
-        self.stats = RoundStats(
-            start_time=time.time(),
-            steps_taken=0,
-            total_reward=0.0
-        )
-        
-        # Reset win detection state
-        self.p1_zero_frames = 0
-        self.p2_zero_frames = 0
-        self.p1_health_pct = 0.0
-        self.p2_health_pct = 0.0
-        
-        # Mark as active
-        self.is_active = True
-        
-        print(f"Round started - P1: {self.env.current_state.player1.health:.1f}%, P2: {self.env.current_state.player2.health:.1f}%")
-        
-        return observation
-    
-    def _detect_health_percentages(self) -> Tuple[float, float]:
-        """
-        Detect health percentages using HealthDetector
-        
-        Returns:
-            (p1_health_pct, p2_health_pct)
-        """
-        if not self.health_detection_available:
-            # Fallback to BR2Environment health if available
-            if self.env.current_state:
-                return self.env.current_state.player1.health, self.env.current_state.player2.health
-            return 0.0, 0.0
+            print(f"❌ Health detection failed: {e}")
+            self.health_available = False
         
         try:
-            # Use the existing HealthDetector - much cleaner!
-            health_state = self.health_detector.detect(self.capture)
-            
+            self.fighter_detector = FighterDetector()
+            self.fighter_available = True
+            print("✅ Fighter detection initialized")
+        except Exception as e:
+            print(f"❌ Fighter detection failed: {e}")
+            self.fighter_available = False
+        
+        # State tracking
+        self.current_state = GameState()
+        self.frame_count = 0
+        self.start_time = time.time()
+        
+        # Win detection parameters
+        self.zero_threshold = 10  # Frames of 0% health needed for death
+        self.max_round_time = 120.0  # 2 minutes max
+        
+        print(f"RoundStateMonitor initialized")
+        print(f"  Health detection: {'✅' if self.health_available else '❌'}")
+        print(f"  Fighter detection: {'✅' if self.fighter_available else '❌'}")
+    
+    def get_current_state(self) -> GameState:
+        """
+        Get the current complete game state
+        
+        Returns:
+            GameState with all current information
+        """
+        self.frame_count += 1
+        current_time = time.time()
+        
+        # Create new state object
+        state = GameState(
+            timestamp=current_time,
+            frame_count=self.frame_count
+        )
+        
+        # Get health information
+        if self.health_available:
+            health_state = self._detect_health()
             if health_state:
-                return health_state.p1_health, health_state.p2_health
-            else:
-                return 0.0, 0.0
+                state.p1_health = health_state.p1_health
+                state.p2_health = health_state.p2_health
+                state.health_detection_working = True
+        
+        # Get fighter positions
+        if self.fighter_available:
+            fighter_detection = self._detect_fighters()
+            if fighter_detection:
+                if fighter_detection.player1:
+                    state.p1_position = fighter_detection.player1.center
+                    state.p1_bbox = fighter_detection.player1.bbox
                 
+                if fighter_detection.player2:
+                    state.p2_position = fighter_detection.player2.center
+                    state.p2_bbox = fighter_detection.player2.bbox
+                
+                if fighter_detection.distance:
+                    state.fighter_distance = fighter_detection.distance
+                
+                state.fighter_detection_working = True
+        
+        # Update win detection
+        self._update_win_detection(state)
+        
+        # Check round end conditions
+        state.round_outcome = self._check_round_outcome(state)
+        
+        # Store as current state
+        self.current_state = state
+        
+        return state
+    
+    def _detect_health(self) -> Optional[HealthState]:
+        """Detect health using pixel-based detection"""
+        try:
+            return self.health_detector.detect(self.capture)
         except Exception as e:
             print(f"Health detection error: {e}")
-            return 0.0, 0.0
+            return None
     
-    def _update_win_detection(self):
-        """Update consecutive zero-frame counters for win detection"""
-        # Check P1 health
-        if self.p1_health_pct <= 0.0:
-            self.p1_zero_frames += 1
-        else:
-            self.p1_zero_frames = 0
-        
-        # Check P2 health
-        if self.p2_health_pct <= 0.0:
-            self.p2_zero_frames += 1
-        else:
-            self.p2_zero_frames = 0
-    
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
-        """
-        Take a step in the round
-        
-        Args:
-            action: Action to take
+    def _detect_fighters(self) -> Optional[FighterDetection]:
+        """Detect fighter positions using YOLO"""
+        try:
+            # Capture current frame
+            frame = self.capture.capture()
+            if frame is None:
+                return None
             
-        Returns:
-            observation, reward, done, info
-        """
-        if not self.is_active:
-            raise RuntimeError("Round is not active. Call reset() first.")
-        
-        # Take step in underlying environment
-        observation, reward, env_done, info = self.env.step(action)
-        
-        # Detect health percentages using pixel detection
-        self.p1_health_pct, self.p2_health_pct = self._detect_health_percentages()
-        
-        # Update win detection counters
-        self._update_win_detection()
-        
-        # Update round stats
-        self.stats.steps_taken += 1
-        self.stats.total_reward += reward
-        
-        # Check if round should end (using our win detection instead of env)
-        round_done, outcome = self._check_round_end_with_win_detection(env_done, info)
-        
-        # Update stats if round is finished
-        if round_done:
-            self._finish_round(outcome, info)
-        
-        # Update info with round-specific data
-        round_info = self._get_round_info(info)
-        
-        return observation, reward, round_done, round_info
+            return self.fighter_detector.detect(frame)
+        except Exception as e:
+            print(f"Fighter detection error: {e}")
+            return None
     
-    def _check_round_end_with_win_detection(self, env_done: bool, info: Dict[str, Any]) -> Tuple[bool, RoundOutcome]:
-        """
-        Check if round should end using win detection logic
+    def _update_win_detection(self, state: GameState):
+        """Update win detection counters based on health"""
+        # Update zero frame counters
+        if state.p1_health <= 0.0:
+            state.p1_zero_frames = self.current_state.p1_zero_frames + 1
+        else:
+            state.p1_zero_frames = 0
         
-        Args:
-            env_done: Whether the underlying environment says it's done
-            info: Info from the environment step
-            
-        Returns:
-            (is_done, outcome)
-        """
+        if state.p2_health <= 0.0:
+            state.p2_zero_frames = self.current_state.p2_zero_frames + 1
+        else:
+            state.p2_zero_frames = 0
+    
+    def _check_round_outcome(self, state: GameState) -> RoundOutcome:
+        """Check if round should end based on win conditions"""
         # Check timeout
-        if self.stats.duration > self.max_round_time:
-            return True, RoundOutcome.TIMEOUT
+        elapsed = time.time() - self.start_time
+        if elapsed > self.max_round_time:
+            return RoundOutcome.TIMEOUT
         
         # Check win conditions using consecutive zero frames
-        p1_dead = self.p1_zero_frames >= self.zero_threshold
-        p2_dead = self.p2_zero_frames >= self.zero_threshold
+        p1_dead = state.p1_zero_frames >= self.zero_threshold
+        p2_dead = state.p2_zero_frames >= self.zero_threshold
         
         if p1_dead and p2_dead:
-            return True, RoundOutcome.DRAW
+            return RoundOutcome.DRAW
         elif p1_dead:
-            return True, RoundOutcome.PLAYER_LOSS
+            return RoundOutcome.PLAYER_LOSS  # P1 lost
         elif p2_dead:
-            return True, RoundOutcome.PLAYER_WIN
+            return RoundOutcome.PLAYER_WIN   # P1 won
         
-        # Round continues
-        return False, RoundOutcome.ONGOING
+        return RoundOutcome.ONGOING
     
-    def _check_round_end(self, env_done: bool, info: Dict[str, Any]) -> Tuple[bool, RoundOutcome]:
-        """
-        Check if the round should end and determine outcome
+    def print_state(self, state: GameState, show_positions: bool = True):
+        """Print current state in a readable format"""
+        # Health status
+        health_str = f"P1: {state.p1_health:5.1f}% | P2: {state.p2_health:5.1f}%"
         
-        Args:
-            env_done: Whether the underlying environment says it's done
-            info: Info from the environment step
-            
-        Returns:
-            (is_done, outcome)
-        """
-        # Check timeout
-        if self.stats.duration > self.max_round_time:
-            return True, RoundOutcome.TIMEOUT
+        # Zero frame counters (show if > 0)
+        zero_str = ""
+        if state.p1_zero_frames > 0:
+            zero_str += f" P1-zero:{state.p1_zero_frames}"
+        if state.p2_zero_frames > 0:
+            zero_str += f" P2-zero:{state.p2_zero_frames}"
         
-        # Check if environment says it's done
-        if env_done:
-            # Determine outcome based on health
-            if self.env.current_state is not None:
-                p1_health = self.env.current_state.player1.health
-                p2_health = self.env.current_state.player2.health
-                
-                if p1_health <= self.health_threshold and p2_health <= self.health_threshold:
-                    return True, RoundOutcome.DRAW
-                elif p1_health <= self.health_threshold:
-                    return True, RoundOutcome.PLAYER_LOSS
-                elif p2_health <= self.health_threshold:
-                    return True, RoundOutcome.PLAYER_WIN
-                else:
-                    # Environment ended but unclear why - check who has more health
-                    if p1_health > p2_health:
-                        return True, RoundOutcome.PLAYER_WIN
-                    elif p2_health > p1_health:
-                        return True, RoundOutcome.PLAYER_LOSS
-                    else:
-                        return True, RoundOutcome.DRAW
-            else:
-                # No valid state - assume error
-                return True, RoundOutcome.ERROR
+        # Positions
+        pos_str = ""
+        if show_positions:
+            if state.p1_position and state.p2_position:
+                dist_str = f" dist:{state.fighter_distance:.0f}" if state.fighter_distance else ""
+                pos_str = f" | P1@{state.p1_position} P2@{state.p2_position}{dist_str}"
+            elif state.p1_position:
+                pos_str = f" | P1@{state.p1_position} P2:---"
+            elif state.p2_position:
+                pos_str = f" | P1:--- P2@{state.p2_position}"
         
-        # Round continues
-        return False, RoundOutcome.ONGOING
+        # Outcome
+        outcome_str = f" | {state.round_outcome.value}"
+        if state.round_outcome != RoundOutcome.ONGOING:
+            outcome_str = f" | 🏆 {state.round_outcome.value.upper()}"
+        
+        # Detection status
+        status_str = ""
+        if not state.health_detection_working:
+            status_str += " [HEALTH-FAIL]"
+        if not state.fighter_detection_working:
+            status_str += " [FIGHTER-FAIL]"
+        
+        print(f"Frame {state.frame_count:4d} | {health_str}{zero_str}{pos_str}{outcome_str}{status_str}")
     
-    def _finish_round(self, outcome: RoundOutcome, info: Dict[str, Any]):
-        """
-        Finish the round and update final stats
-        
-        Args:
-            outcome: How the round ended
-            info: Final step info
-        """
-        self.stats.end_time = time.time()
-        self.stats.outcome = outcome
-        
-        # Store final health values
-        if self.env.current_state is not None:
-            self.stats.final_p1_health = self.env.current_state.player1.health
-            self.stats.final_p2_health = self.env.current_state.player2.health
-        
-        # Mark as inactive
-        self.is_active = False
-        
-        # Print round summary
-        print(f"Round finished: {outcome.value}")
-        print(f"  Duration: {self.stats.duration:.1f}s")
-        print(f"  Steps: {self.stats.steps_taken}")
-        print(f"  Total reward: {self.stats.total_reward:.2f}")
-        print(f"  Final health - P1: {self.stats.final_p1_health:.1f}%, P2: {self.stats.final_p2_health:.1f}%")
+    def reset(self):
+        """Reset for a new round"""
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.current_state = GameState()
+        print("🔄 Round state monitor reset")
     
-    def _get_round_info(self, env_info: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Create round-specific info dictionary
-        
-        Args:
-            env_info: Info from environment step
-            
-        Returns:
-            Enhanced info dictionary
-        """
-        round_info = env_info.copy()
-        
-        # Add round-specific information
-        round_info.update({
-            'round_active': self.is_active,
-            'round_steps': self.stats.steps_taken if self.stats else 0,
-            'round_duration': self.stats.duration if self.stats else 0.0,
-            'round_total_reward': self.stats.total_reward if self.stats else 0.0,
-            'round_outcome': self.stats.outcome.value if self.stats else RoundOutcome.ONGOING.value,
-            # Win detection info
-            'p1_health_percentage': self.p1_health_pct,
-            'p2_health_percentage': self.p2_health_pct,
-            'p1_zero_frames': self.p1_zero_frames,
-            'p2_zero_frames': self.p2_zero_frames,
-            'zero_threshold': self.zero_threshold,
-            'win_detection_active': self.health_detection_available,
-        })
-        
-        return round_info
+    def is_round_finished(self) -> bool:
+        """Check if round is finished"""
+        return self.current_state.round_outcome != RoundOutcome.ONGOING
     
-    def get_stats(self) -> Optional[RoundStats]:
-        """Get current round statistics"""
-        return self.stats
-    
-    def is_round_active(self) -> bool:
-        """Check if round is currently active"""
-        return self.is_active
+    def get_winner(self) -> Optional[str]:
+        """Get the winner if round is finished"""
+        if self.current_state.round_outcome == RoundOutcome.PLAYER_WIN:
+            return "PLAYER 1"
+        elif self.current_state.round_outcome == RoundOutcome.PLAYER_LOSS:
+            return "PLAYER 2"
+        elif self.current_state.round_outcome == RoundOutcome.DRAW:
+            return "DRAW"
+        return None
     
     def close(self):
         """Clean up resources"""
-        if hasattr(self, 'env'):
-            self.env.close()
-        print("RoundSubEpisode closed")
-    
-    def __del__(self):
-        """Cleanup on deletion"""
-        self.close()
+        print("RoundStateMonitor closed")
 
-# Test function
-if __name__ == "__main__":
-    print("Testing RoundSubEpisode...")
+
+def test_state_monitoring():
+    """Test the state monitoring functionality"""
+    print("🧪 Testing Round State Monitor")
+    print("=" * 60)
+    print("This will monitor health, positions, and detect winners")
+    print("Press Ctrl+C to stop")
+    print("-" * 60)
     
-    round_episode = RoundSubEpisode()
+    monitor = RoundStateMonitor()
     
     try:
-        # Test a single round
-        obs = round_episode.reset()
-        print(f"Initial observation shape: {obs.shape}")
+        monitor.reset()
         
-        # Take a few random actions
-        for i in range(10):
-            action = np.random.randint(0, round_episode.env.action_space.n)
-            obs, reward, done, info = round_episode.step(action)
+        # Monitor loop
+        while not monitor.is_round_finished():
+            # Get current state
+            state = monitor.get_current_state()
             
-            print(f"Step {i+1}: Action {action}, Reward {reward:.2f}, Done {done}")
+            # Print state
+            monitor.print_state(state)
             
-            if done:
-                print(f"Round ended after {i+1} steps")
+            # Check for winner
+            if monitor.is_round_finished():
+                winner = monitor.get_winner()
+                print(f"\n🎉 ROUND FINISHED! Winner: {winner}")
                 break
-        
-        # Print final stats
-        stats = round_episode.get_stats()
-        if stats:
-            print(f"Final stats: {stats}")
+            
+            # Small delay
+            time.sleep(0.1)  # 10 FPS monitoring
     
+    except KeyboardInterrupt:
+        print(f"\n\n⏹️  Monitoring stopped by user")
     except Exception as e:
-        print(f"Error during test: {e}")
+        print(f"\n❌ Error during monitoring: {e}")
         import traceback
         traceback.print_exc()
-    
     finally:
-        round_episode.close()
+        monitor.close()
+
+
+if __name__ == "__main__":
+    test_state_monitoring()
