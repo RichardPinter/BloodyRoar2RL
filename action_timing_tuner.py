@@ -31,14 +31,22 @@ def main():
         health_detector = HealthDetector()
         controller = BizHawkController()
         print("✅ All components initialized")
+        
+        # Test controller immediately
+        print("🧪 Testing controller with one punch...")
+        controller.punch()
+        print("✅ Test punch sent")
+        time.sleep(1)  # Wait to see if it worked
+        
     except Exception as e:
         print(f"❌ Initialization failed: {e}")
         return
     
     # Timing variables
     start_time = time.time()
-    last_punch_time = 0
+    last_punch_time = start_time - PUNCH_INTERVAL  # Start immediately ready to punch
     frame_count = 0
+    punches_sent = 0
     
     # Health tracking
     last_p1_health = 100.0
@@ -61,9 +69,18 @@ def main():
                 p1_health = p2_health = 0.0
             
             # Check if it's time to punch
-            if current_time - last_punch_time >= PUNCH_INTERVAL:
-                print(f"\n[{elapsed:6.3f}s] *** PUNCH SENT *** (Frame {frame_count})")
-                controller.punch()
+            time_since_last_punch = current_time - last_punch_time
+            if time_since_last_punch >= PUNCH_INTERVAL:
+                punches_sent += 1
+                print(f"\n[{elapsed:6.3f}s] *** PUNCH #{punches_sent} SENT *** (Frame {frame_count})")
+                print(f"  Debug: time_since_last={time_since_last_punch:.3f}s, interval={PUNCH_INTERVAL}s")
+                
+                try:
+                    controller.punch()
+                    print("  ✅ controller.punch() completed")
+                except Exception as e:
+                    print(f"  ❌ controller.punch() failed: {e}")
+                
                 last_punch_time = current_time
             
             # Display health every N frames (reduce spam)
@@ -98,7 +115,7 @@ def main():
     
     except KeyboardInterrupt:
         elapsed = time.time() - start_time
-        total_punches = int(elapsed / PUNCH_INTERVAL)
+        total_punches = punches_sent
         
         print(f"\n\n⏹️  Tuning session stopped")
         print(f"Duration: {elapsed:.1f}s")
