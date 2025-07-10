@@ -45,11 +45,29 @@ class BR2Environment(gym.Env):
             9: "special"       # Special attack
         }
         
+        # Action-specific timing delays (in seconds)
+        self.action_delays = {
+            None: 0.05,        # No action - minimal delay
+            "left": 0.08,      # Movement - quick
+            "right": 0.08,     # Movement - quick  
+            "jump": 0.12,      # Jump - moderate startup
+            "squat": 0.08,     # Squat - quick
+            "punch": 0.25,     # Punch - startup + active frames
+            "kick": 0.30,      # Kick - longer startup
+            "throw": 0.35,     # Throw - command grab startup
+            "transform": 0.50, # Transform - long animation
+            "special": 0.40    # Special attack - varies but generally long
+        }
+        
         # State tracking
         self.previous_state: Optional[GameState] = None
         self.current_state: Optional[GameState] = None
         self.episode_steps = 0
         self.max_episode_steps = 7200  # ~2 minutes at 60fps (no timer mode)
+        
+        # Reward attribution tracking
+        self.action_history = []  # Track recent actions with timestamps
+        self.reward_attribution = {}  # Map step -> (action, reward)
         
         print("BR2 Environment initialized")
         print(f"Observation space: {self.observation_space}")
@@ -65,8 +83,11 @@ class BR2Environment(gym.Env):
         Returns:
             observation, reward, done, info
         """
-        # Execute action using appropriate controller method
+        # Record action in history for reward attribution
         action_name = self.action_map.get(action)
+        action_timestamp = time.time()
+        
+        # Execute action using appropriate controller method
         if action_name is not None:
             if action_name == "punch":
                 self.controller.punch()
@@ -87,8 +108,17 @@ class BR2Environment(gym.Env):
                 # Basic movements (left, right)
                 self.controller.send_action(action_name)
         
-        # Small delay to let action take effect
-        time.sleep(0.05)
+        # Use action-specific delay to let action take effect
+        delay = self.action_delays.get(action_name, 0.05)
+        time.sleep(delay)
+        
+        # Track this action
+        self.action_history.append({
+            'step': self.episode_steps,
+            'action': action_name,
+            'timestamp': action_timestamp,
+            'delay': delay
+        })
         
         # Capture new state
         self.previous_state = self.current_state
@@ -104,6 +134,18 @@ class BR2Environment(gym.Env):
         if self.previous_state is not None and self.current_state is not None:
             reward = self.calculate_reward(self.previous_state, self.current_state)
         
+        # Store reward attribution
+        if abs(reward) > 0.01:  # Only track significant rewards
+            self.reward_attribution[self.episode_steps] = {
+                'action': action_name,
+                'reward': reward,
+                'delay_used': delay
+            }
+        
+        # Clean up old action history (keep last 50 steps)
+        if len(self.action_history) > 50:
+            self.action_history = self.action_history[-50:]
+        
         # Check if episode is done
         done = self.is_done()
         
@@ -114,7 +156,9 @@ class BR2Environment(gym.Env):
         info = {
             'episode_steps': self.episode_steps,
             'current_state': self.current_state,
-            'action_executed': self.action_map.get(action, 'none'),
+            'action_executed': action_name,
+            'action_delay': delay,
+            'reward_attributed': abs(reward) > 0.01,
         }
         
         if self.current_state:
@@ -137,6 +181,10 @@ class BR2Environment(gym.Env):
         
         # Reset step counter
         self.episode_steps = 0
+        
+        # Clear tracking variables
+        self.action_history.clear()
+        self.reward_attribution.clear()
         
         # Clear action queue
         self.controller.clear_file()

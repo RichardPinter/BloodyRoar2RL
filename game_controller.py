@@ -23,12 +23,12 @@ class BizHawkController:
             print(f"Error clearing file: {e}")
     
     def send_action(self, action):
-        """Write action and wait for it to be processed"""
+        """Write action to file"""
         try:
             with open(self.actions_file, 'w') as f:
                 f.write(action)
             print(f"Sent: {action}")
-            time.sleep(self.action_delay)  # Give Lua time to read and clear
+            # No delay here - timing handled by environment
         except Exception as e:
             print(f"Error sending action: {e}")
     
