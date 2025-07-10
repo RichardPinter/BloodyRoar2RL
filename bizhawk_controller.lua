@@ -44,8 +44,8 @@ function execute_action(action_text)
         console.log("BLOCK!")
         joypad.set({["P1 R1"] = true})
         return true
-    elseif action == "transform" or action == "l1+l2" then
-        console.log("TRANSFORM!")
+    elseif action == "beast" or action == "l1+l2" then
+        console.log("BEAST TRANSFORM!")
         joypad.set({["P1 L1"] = true, ["P1 L2"] = true})
         return true
     elseif action == "jump" or action == "up" then
