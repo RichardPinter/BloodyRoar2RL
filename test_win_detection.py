@@ -12,6 +12,8 @@ class RoundStatus(Enum):
     P1_WINS = "P1_WINS"
     P2_WINS = "P2_WINS"
     DOUBLE_KO = "DOUBLE_KO"
+    WINNER_DECLARED = "WINNER_DECLARED"
+    WAITING_FOR_RESET = "WAITING_FOR_RESET"
 
 @dataclass
 class WinDetectionState:
@@ -21,6 +23,8 @@ class WinDetectionState:
     status: RoundStatus = RoundStatus.ONGOING
     winner_declared_frame: int = 0
     zero_threshold: int = 10  # Frames of zero health needed to declare death
+    round_winner: str = ""  # Who won the round
+    celebration_frames: int = 0  # Frames since winner declared
 
 def test_win_detection():
     """
@@ -77,37 +81,58 @@ def test_win_detection():
             p1_health_pct, p1_count = calculate_yellow_percentage(p1_strip, config)
             p2_health_pct, p2_count = calculate_yellow_percentage(p2_strip, config)
             
-            # Update win detection state
-            update_win_detection(win_state, p1_health_pct, p2_health_pct, frame_count)
+            # Update win detection state and handle different states
+            if win_state.status == RoundStatus.ONGOING:
+                # Only update detection during ongoing rounds
+                update_win_detection(win_state, p1_health_pct, p2_health_pct, frame_count)
+                
+                # Check if winner was just declared
+                if win_state.status != RoundStatus.ONGOING:
+                    print()  # New line for winner announcement
+                    print("🎉 " + "="*60 + " 🎉")
+                    print(f"   WINNER DETECTED: {win_state.round_winner}")
+                    print(f"   Declared at frame {frame_count} ({elapsed:.1f}s)")
+                    print("🎉 " + "="*60 + " 🎉")
+                    print("Entering celebration phase... waiting for new round to start")
+                    print("(Or press 'r' + Enter to manually reset)")
+                    win_state.status = RoundStatus.WINNER_DECLARED
+                
+            elif win_state.status == RoundStatus.WINNER_DECLARED:
+                # During celebration, look for new round starting
+                win_state.celebration_frames += 1
+                
+                # Check for new round (both players have good health)
+                if p1_health_pct > 80.0 and p2_health_pct > 80.0:
+                    print()
+                    print("🔄 NEW ROUND DETECTED! Auto-resetting...")
+                    reset_win_detection(win_state)
+                    frame_count = 0
+                    start_time = time.time()
+                    print("Reset complete. Starting new round detection...")
+                    continue
+                
+                # Check for manual reset input (non-blocking)
+                import select
+                import sys
+                if select.select([sys.stdin], [], [], 0)[0]:
+                    try:
+                        user_input = sys.stdin.readline().strip().lower()
+                        if user_input == 'r':
+                            print()
+                            print("🔄 MANUAL RESET")
+                            reset_win_detection(win_state)
+                            frame_count = 0
+                            start_time = time.time()
+                            print("Reset complete. Starting new round detection...")
+                            continue
+                    except:
+                        pass
             
             # Create status display
             elapsed = time.time() - start_time
             status_display = get_status_display(win_state, p1_health_pct, p2_health_pct, frame_count, elapsed)
             
             print(f"\r{status_display}", end='', flush=True)
-            
-            # Check if winner was just declared
-            if (win_state.status != RoundStatus.ONGOING and 
-                win_state.winner_declared_frame == frame_count):
-                print()  # New line for winner announcement
-                print("🎉 " + "="*60 + " 🎉")
-                print(f"   WINNER DETECTED: {win_state.status.value}")
-                print(f"   Declared at frame {frame_count} ({elapsed:.1f}s)")
-                print("🎉 " + "="*60 + " 🎉")
-                print("Press 'r' + Enter to reset for next round, or Ctrl+C to exit")
-                
-                # Wait for reset or continue
-                try:
-                    user_input = input().strip().lower()
-                    if user_input == 'r':
-                        reset_win_detection(win_state)
-                        frame_count = 0
-                        start_time = time.time()
-                        print("Reset complete. Starting new round detection...")
-                        continue
-                except:
-                    # If input fails, just continue
-                    pass
             
             time.sleep(0.05)  # ~20fps
             
@@ -149,20 +174,27 @@ def update_win_detection(win_state: WinDetectionState, p1_health: float, p2_heal
     
     if p1_dead and p2_dead:
         win_state.status = RoundStatus.DOUBLE_KO
+        win_state.round_winner = "DOUBLE KO"
         win_state.winner_declared_frame = frame_count
     elif p1_dead:
         win_state.status = RoundStatus.P2_WINS
+        win_state.round_winner = "PLAYER 2"
         win_state.winner_declared_frame = frame_count
     elif p2_dead:
         win_state.status = RoundStatus.P1_WINS
+        win_state.round_winner = "PLAYER 1"
         win_state.winner_declared_frame = frame_count
 
 def reset_win_detection(win_state: WinDetectionState):
     """Reset win detection state for a new round"""
+    print(f"    [DEBUG] Resetting: P1 zeros: {win_state.p1_zero_frames} -> 0, P2 zeros: {win_state.p2_zero_frames} -> 0")
     win_state.p1_zero_frames = 0
     win_state.p2_zero_frames = 0
     win_state.status = RoundStatus.ONGOING
     win_state.winner_declared_frame = 0
+    win_state.round_winner = ""
+    win_state.celebration_frames = 0
+    print(f"    [DEBUG] Reset complete. Status: {win_state.status.value}")
 
 def get_status_display(win_state: WinDetectionState, p1_health: float, p2_health: float, 
                       frame_count: int, elapsed: float) -> str:
@@ -185,6 +217,8 @@ def get_status_display(win_state: WinDetectionState, p1_health: float, p2_health
             status_info += f" ⚠️ P1 DANGER ({win_state.zero_threshold - win_state.p1_zero_frames} frames left)"
         elif win_state.p2_zero_frames >= win_state.zero_threshold - 3:
             status_info += f" ⚠️ P2 DANGER ({win_state.zero_threshold - win_state.p2_zero_frames} frames left)"
+    elif win_state.status == RoundStatus.WINNER_DECLARED:
+        status_info = f"🏆 {win_state.round_winner} WINS! (celebration: {win_state.celebration_frames} frames)"
     else:
         status_info = f"*** {win_state.status.value} ***"
     
