@@ -105,7 +105,7 @@ class RL20FrameEnvironment:
         self._execute_action(action_name)
         
         # Wait 20 frames and collect states
-        states_during = self._collect_states_for_frames(self.frame_skip, step_start_time)
+        rl_states_during, game_states_during = self._collect_states_for_frames(self.frame_skip, step_start_time)
         
         # Get final state after action
         state_after = self._get_rl_state()
@@ -116,8 +116,11 @@ class RL20FrameEnvironment:
         actual_duration = step_end_time - step_start_time
         self.step_durations.append(actual_duration)
         
+        # Analyze the 20-frame group
+        frame_analysis = self._analyze_frame_group_simple(game_states_during)
+        
         # Calculate reward from state change
-        reward = self._calculate_reward(state_before, state_after, states_during)
+        reward = self._calculate_reward(state_before, state_after, rl_states_during)
         self.total_reward += reward
         
         # Check if episode is done
@@ -143,6 +146,22 @@ class RL20FrameEnvironment:
         print(f"  Reward: {reward:.3f} | P1: {state_after.health[0]:.1f}% | P2: {state_after.health[1]:.1f}% | Done: {done}")
         print(f"  Timing: {actual_ms:.0f}ms (expected {expected_ms:.0f}ms) | Avg: {avg_ms:.0f}ms")
         
+        # Print 20-frame analysis
+        if frame_analysis:
+            print(f"  📊 Frame Group Analysis:")
+            print(f"    P1 Avg Health: {frame_analysis.get('p1_avg_health', 0):.1f}%")
+            print(f"    P2 Avg Health: {frame_analysis.get('p2_avg_health', 0):.1f}%")
+            p1_pos = frame_analysis.get('p1_final_pos', (0, 0))
+            p2_pos = frame_analysis.get('p2_final_pos', (0, 0))
+            print(f"    Final P1 Position: ({p1_pos[0]:.1f}, {p1_pos[1]:.1f})")
+            print(f"    Final P2 Position: ({p2_pos[0]:.1f}, {p2_pos[1]:.1f})")
+            distance = frame_analysis.get('final_distance')
+            if distance is not None:
+                print(f"    Distance: {distance:.1f}")
+            else:
+                print(f"    Distance: N/A")
+            print(f"    Frames Analyzed: {frame_analysis.get('frame_count', 0)}")
+        
         # Update for next step
         self.last_state = state_before
         
@@ -157,17 +176,22 @@ class RL20FrameEnvironment:
             print(f"Warning: Action '{action_name}' not found, sending as raw command")
             self.controller.send_action(action_name)
     
-    def _collect_states_for_frames(self, num_frames: int, start_time: float) -> List[RLState]:
+    def _collect_states_for_frames(self, num_frames: int, start_time: float) -> Tuple[List[RLState], List]:
         """Collect states for the specified number of frames"""
-        states = []
+        rl_states = []
+        game_states = []
         
         for frame_i in range(num_frames):
             # Wait one frame (~16.7ms at 60fps)
             time.sleep(self.expected_frame_time)
             
-            # Get current state
+            # Get current game state from monitor
+            game_state = self.round_monitor.get_current_state()
+            game_states.append(game_state)
+            
+            # Convert to RL state
             rl_state = self._get_rl_state()
-            states.append(rl_state)
+            rl_states.append(rl_state)
             
             # Debug output for key frames only (reduce spam)
             elapsed = time.time() - start_time
@@ -178,7 +202,7 @@ class RL20FrameEnvironment:
             elif frame_i == num_frames - 1:
                 print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% [t={elapsed:.3f}s] (final)")
         
-        return states
+        return rl_states, game_states
     
     def _get_rl_state(self) -> RLState:
         """Get current RL state from round monitor"""
@@ -254,6 +278,38 @@ class RL20FrameEnvironment:
             return True
         
         return False
+    
+    def _analyze_frame_group_simple(self, game_states) -> dict:
+        """Simple analysis of 20-frame group for testing"""
+        if not game_states or len(game_states) == 0:
+            return {}
+        
+        # Calculate average health over all frames
+        p1_healths = [gs.p1_health for gs in game_states if gs.p1_health is not None]
+        p2_healths = [gs.p2_health for gs in game_states if gs.p2_health is not None]
+        
+        # Get final frame positions
+        final_state = game_states[-1]
+        p1_final_pos = final_state.p1_position if final_state.p1_position else (0, 0)
+        p2_final_pos = final_state.p2_position if final_state.p2_position else (0, 0)
+        
+        # Calculate distance if positions are available
+        distance = None
+        if final_state.p1_position and final_state.p2_position:
+            dx = final_state.p2_position[0] - final_state.p1_position[0]
+            dy = final_state.p2_position[1] - final_state.p1_position[1]
+            distance = (dx**2 + dy**2)**0.5
+        elif final_state.fighter_distance:
+            distance = final_state.fighter_distance
+        
+        return {
+            'p1_avg_health': np.mean(p1_healths) if p1_healths else 0,
+            'p2_avg_health': np.mean(p2_healths) if p2_healths else 0,
+            'p1_final_pos': p1_final_pos,
+            'p2_final_pos': p2_final_pos,
+            'final_distance': distance,
+            'frame_count': len(game_states)
+        }
     
     def get_observation_space_size(self) -> int:
         """Get size of observation space for RL agent"""
