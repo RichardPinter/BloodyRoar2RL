@@ -49,7 +49,7 @@ class BR2Environment(gym.Env):
         self.previous_state: Optional[GameState] = None
         self.current_state: Optional[GameState] = None
         self.episode_steps = 0
-        self.max_episode_steps = 1800  # ~30 seconds at 60fps
+        self.max_episode_steps = 7200  # ~2 minutes at 60fps (no timer mode)
         
         print("BR2 Environment initialized")
         print(f"Observation space: {self.observation_space}")
@@ -203,17 +203,17 @@ class BR2Environment(gym.Env):
         """
         # End if max steps reached
         if self.episode_steps >= self.max_episode_steps:
+            print(f"Episode ended: Max steps ({self.max_episode_steps}) reached")
             return True
         
-        # End if no valid state
-        if self.current_state is None:
-            return True
+        # Only end if we have a valid state and someone's health is very low
+        if self.current_state is not None:
+            if (self.current_state.player1.health <= 5 or 
+                self.current_state.player2.health <= 5):
+                print(f"Episode ended: Low health - P1: {self.current_state.player1.health:.1f}%, P2: {self.current_state.player2.health:.1f}%")
+                return True
         
-        # End if either player's health is very low (round is over)
-        if (self.current_state.player1.health <= 5 or 
-            self.current_state.player2.health <= 5):
-            return True
-        
+        # Don't end just because state capture failed - keep trying
         return False
     
     def render(self, mode='human'):
