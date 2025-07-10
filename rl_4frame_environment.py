@@ -53,6 +53,11 @@ class RL20FrameEnvironment:
         self.episode_step = 0
         self.total_reward = 0
         
+        # Timing tracking
+        self.step_durations = []
+        self.expected_frame_time = 1/60  # 16.67ms per frame
+        self.expected_step_time = self.frame_skip * self.expected_frame_time
+        
         print(f"Action space: {self.action_space_size} actions")
         print(f"Actions: {self.actions}")
         print(f"Frame skip: {self.frame_skip} (~{self.frame_skip/60*1000:.0f}ms between actions)")
@@ -87,21 +92,29 @@ class RL20FrameEnvironment:
         """
         self.episode_step += 1
         
+        # Record start time
+        step_start_time = time.time()
+        
         # Store state before action
         state_before = self.current_state
         
         # Execute action
         action_name = self.actions[action_index]
-        print(f"Step {self.episode_step}: Taking action '{action_name}' (index {action_index})")
+        print(f"Step {self.episode_step}: Taking action '{action_name}' (index {action_index}) [t={0:.3f}s]")
         
         self._execute_action(action_name)
         
         # Wait 20 frames and collect states
-        states_during = self._collect_states_for_frames(self.frame_skip)
+        states_during = self._collect_states_for_frames(self.frame_skip, step_start_time)
         
         # Get final state after action
         state_after = self._get_rl_state()
         self.current_state = state_after
+        
+        # Record total step duration
+        step_end_time = time.time()
+        actual_duration = step_end_time - step_start_time
+        self.step_durations.append(actual_duration)
         
         # Calculate reward from state change
         reward = self._calculate_reward(state_before, state_after, states_during)
@@ -121,7 +134,14 @@ class RL20FrameEnvironment:
             'round_outcome': self.round_monitor.current_state.round_outcome.value,
         }
         
+        # Show timing info
+        expected_ms = self.expected_step_time * 1000
+        actual_ms = actual_duration * 1000
+        avg_duration = sum(self.step_durations) / len(self.step_durations)
+        avg_ms = avg_duration * 1000
+        
         print(f"  Reward: {reward:.3f} | P1: {state_after.health[0]:.1f}% | P2: {state_after.health[1]:.1f}% | Done: {done}")
+        print(f"  Timing: {actual_ms:.0f}ms (expected {expected_ms:.0f}ms) | Avg: {avg_ms:.0f}ms")
         
         # Update for next step
         self.last_state = state_before
@@ -137,25 +157,26 @@ class RL20FrameEnvironment:
             print(f"Warning: Action '{action_name}' not found, sending as raw command")
             self.controller.send_action(action_name)
     
-    def _collect_states_for_frames(self, num_frames: int) -> List[RLState]:
+    def _collect_states_for_frames(self, num_frames: int, start_time: float) -> List[RLState]:
         """Collect states for the specified number of frames"""
         states = []
         
         for frame_i in range(num_frames):
             # Wait one frame (~16.7ms at 60fps)
-            time.sleep(1/60)
+            time.sleep(self.expected_frame_time)
             
             # Get current state
             rl_state = self._get_rl_state()
             states.append(rl_state)
             
             # Debug output for key frames only (reduce spam)
+            elapsed = time.time() - start_time
             if frame_i == 0:
-                print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}%")
+                print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% [t={elapsed:.3f}s]")
             elif frame_i == num_frames // 2:  # Middle frame
-                print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% (mid)")
+                print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% [t={elapsed:.3f}s] (mid)")
             elif frame_i == num_frames - 1:
-                print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% (final)")
+                print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% [t={elapsed:.3f}s] (final)")
         
         return states
     
