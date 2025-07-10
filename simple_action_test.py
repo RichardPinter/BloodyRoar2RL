@@ -24,6 +24,9 @@ def main():
     
     command = ""
     frame = 0
+    last_p2_health = 100.0
+    action_frame = None
+    action_name = None
     
     while True:
         frame += 1
@@ -36,8 +39,17 @@ def main():
         else:
             p1_health = p2_health = 0.0
         
+        # Check if P2 health decreased
+        if p2_health < last_p2_health and action_frame is not None:
+            frames_to_hit = frame - action_frame
+            print(f"\n>>> P2 HIT! {action_name} took {frames_to_hit} frames to connect <<<")
+            action_frame = None  # Reset
+        
         # Print health
         print(f"\rFrame {frame:04d} | P1: {p1_health:5.1f}% | P2: {p2_health:5.1f}% | {command}", end='', flush=True)
+        
+        # Update last health
+        last_p2_health = p2_health
         
         # Check for keyboard input (non-blocking)
         if msvcrt.kbhit():
@@ -49,18 +61,28 @@ def main():
                 if command == "kick":
                     controller.kick()
                     print(f"*** KICK at frame {frame} ***")
+                    action_frame = frame
+                    action_name = "KICK"
                 elif command == "punch":
                     controller.punch()
                     print(f"*** PUNCH at frame {frame} ***")
+                    action_frame = frame
+                    action_name = "PUNCH"
                 elif command == "throw":
                     controller.throw()
                     print(f"*** THROW at frame {frame} ***")
+                    action_frame = frame
+                    action_name = "THROW"
                 elif command == "special":
                     controller.special()
                     print(f"*** SPECIAL at frame {frame} ***")
+                    action_frame = frame
+                    action_name = "SPECIAL"
                 elif command == "block":
                     controller.block()
                     print(f"*** BLOCK at frame {frame} ***")
+                    action_frame = frame
+                    action_name = "BLOCK"
                 command = ""
             elif key == 'q':
                 break
