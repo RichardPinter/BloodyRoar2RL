@@ -158,7 +158,7 @@ class SlowRLEnvironment:
         return self._state_to_array(state_after), reward, done, info
     
     def _collect_observation_window(self) -> SlowState:
-        """Collect 4 observations over 4 seconds"""
+        """Collect observations over the configured observation window"""
         print(f"📊 Collecting {self.observation_window}-second observation window...")
         
         observations = []
@@ -196,9 +196,9 @@ class SlowRLEnvironment:
         )
     
     def _create_slow_state(self, observations: List[SlowObservation]) -> SlowState:
-        """Create SlowState from 4 observations with calculated features"""
-        if len(observations) != 4:
-            raise ValueError(f"Expected 4 observations, got {len(observations)}")
+        """Create SlowState from variable number of observations with calculated features"""
+        if len(observations) < 2:
+            raise ValueError(f"Need at least 2 observations, got {len(observations)}")
         
         first_obs = observations[0]
         last_obs = observations[-1]
