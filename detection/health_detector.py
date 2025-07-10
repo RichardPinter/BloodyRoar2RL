@@ -3,7 +3,10 @@ import numpy as np
 import time
 from dataclasses import dataclass
 from typing import Tuple, Optional
-from window_capture import WindowCapture
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from detection.window_capture import WindowCapture
 
 @dataclass
 class HealthBarConfig:

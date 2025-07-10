@@ -172,7 +172,10 @@ class FighterDetector:
 if __name__ == "__main__":
     WINDOW_TITLE = "Bloody Roar II (USA) [PlayStation] - BizHawk"
     
-    from window_capture import WindowCapture
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from detection.window_capture import WindowCapture
     
     capture = WindowCapture(WINDOW_TITLE)
     fighter_detector = FighterDetector()

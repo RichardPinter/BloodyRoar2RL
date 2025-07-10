@@ -17,8 +17,8 @@ import json
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.slow_rl_environment import SlowRLEnvironment
-from core.rl_training_simple import PPOAgent
+from slow_rl_environment import SlowRLEnvironment
+from rl_training_simple import PPOAgent
 
 
 class RoundTrainingTester:
