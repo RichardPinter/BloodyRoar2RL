@@ -109,7 +109,7 @@ class RoundSubEpisode:
     
     def _detect_health_percentages(self) -> Tuple[float, float]:
         """
-        Detect health percentages using pixel-based detection
+        Detect health percentages using HealthDetector
         
         Returns:
             (p1_health_pct, p2_health_pct)
@@ -121,66 +121,17 @@ class RoundSubEpisode:
             return 0.0, 0.0
         
         try:
-            # Capture health bar regions
-            config = self.health_detector.config
+            # Use the existing HealthDetector - much cleaner!
+            health_state = self.health_detector.detect(self.capture)
             
-            p1_strip = self.capture.capture_region(
-                x=config.p1_x, y=config.bar_y,
-                width=config.bar_length, height=config.bar_height
-            )
-            p2_strip = self.capture.capture_region(
-                x=config.p2_x - config.bar_length, y=config.bar_y,
-                width=config.bar_length, height=config.bar_height
-            )
-            
-            if p1_strip is None or p2_strip is None:
+            if health_state:
+                return health_state.p1_health, health_state.p2_health
+            else:
                 return 0.0, 0.0
-            
-            # Calculate yellow pixel percentages (same logic as test script)
-            p1_pct, _ = self._calculate_yellow_percentage(p1_strip, config)
-            p2_pct, _ = self._calculate_yellow_percentage(p2_strip, config)
-            
-            return p1_pct, p2_pct
-            
+                
         except Exception as e:
             print(f"Health detection error: {e}")
             return 0.0, 0.0
-    
-    def _calculate_yellow_percentage(self, pixel_strip, config):
-        """Calculate percentage of yellow pixels in health bar strip"""
-        if pixel_strip is None:
-            return 0.0, 0
-        
-        # Handle different array shapes
-        if len(pixel_strip.shape) == 3:
-            if pixel_strip.shape[0] == 1:
-                pixel_strip = pixel_strip[0]
-            elif pixel_strip.shape[2] == 3:
-                pixel_strip = pixel_strip.reshape(-1, 3)
-        
-        # Extract BGR channels
-        b = pixel_strip[:, 0]
-        g = pixel_strip[:, 1]
-        r = pixel_strip[:, 2]
-        
-        # Create mask for yellow pixels
-        yellow_mask = (
-            (r >= config.lower_bgr[2]) & (r <= config.upper_bgr[2]) &
-            (g >= config.lower_bgr[1]) & (g <= config.upper_bgr[1]) &
-            (b >= config.lower_bgr[0]) & (b <= config.upper_bgr[0])
-        )
-        
-        # Count yellow pixels
-        yellow_count = np.sum(yellow_mask)
-        total_pixels = len(pixel_strip)
-        
-        # Calculate percentage
-        if total_pixels > 0:
-            percentage = (yellow_count / total_pixels) * 100.0
-        else:
-            percentage = 0.0
-        
-        return percentage, yellow_count
     
     def _update_win_detection(self):
         """Update consecutive zero-frame counters for win detection"""

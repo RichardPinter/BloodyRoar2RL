@@ -6,6 +6,29 @@ from enum import Enum
 
 from round_sub_episode import RoundSubEpisode, RoundOutcome, RoundStats
 
+@dataclass
+class MatchRecord:
+    """Record for a single match (best of 3 rounds) against an opponent"""
+    opponent_number: int
+    rounds_won_p1: int = 0
+    rounds_won_p2: int = 0
+    match_winner: str = ""
+    is_complete: bool = False
+    
+    @property
+    def total_rounds(self) -> int:
+        return self.rounds_won_p1 + self.rounds_won_p2
+    
+    @property
+    def is_p1_defeated(self) -> bool:
+        """Check if P1 lost this match (P2 won 2 rounds)"""
+        return self.rounds_won_p2 >= 2
+    
+    @property
+    def is_p1_winner(self) -> bool:
+        """Check if P1 won this match (P1 won 2 rounds)"""
+        return self.rounds_won_p1 >= 2
+
 class ArcadeOutcome(Enum):
     """Possible outcomes of an arcade episode"""
     ONGOING = "ongoing"
@@ -79,9 +102,13 @@ class ArcadeEpisode:
         self.stats = None
         self.is_active = False
         
-        # Opponent tracking
+        # Opponent tracking (legacy format)
         self.opponent_records: Dict[int, OpponentRecord] = {}
+        
+        # Match tracking (new format with win detection integration)
         self.current_opponent = 1
+        self.current_match: Optional[MatchRecord] = None
+        self.match_history: List[MatchRecord] = []
         
         # Current round
         self.current_round: Optional[RoundSubEpisode] = None
@@ -106,6 +133,10 @@ class ArcadeEpisode:
         # Reset opponent tracking
         self.opponent_records.clear()
         self.current_opponent = 1
+        
+        # Reset match tracking
+        self.current_match = MatchRecord(self.current_opponent)
+        self.match_history.clear()
         
         # Clean up any existing round
         if self.current_round:
@@ -161,14 +192,15 @@ class ArcadeEpisode:
             self.stats.round_history.append(round_stats)
             self.stats.total_rounds += 1
         
-        # Update opponent record
+        # Update both tracking systems
         self._update_opponent_record(round_outcome)
+        self._update_match_record(round_outcome)
         
         # Check if arcade episode should end
         arcade_done = self._check_arcade_end()
         
-        # Progress to next opponent if current one is beaten
-        if self._is_opponent_beaten():
+        # Progress to next opponent if current match is complete
+        if self._is_match_complete():
             self._progress_to_next_opponent()
         
         # Close current round
@@ -176,7 +208,10 @@ class ArcadeEpisode:
         self.current_round = None
         
         print(f"Round completed: {round_outcome.value}")
-        print(f"Opponent {self.current_opponent} record: {self._get_opponent_record()}")
+        print(f"Match vs Opponent {self.current_opponent}: P1={self.current_match.rounds_won_p1} P2={self.current_match.rounds_won_p2}")
+        
+        if self.current_match.is_complete:
+            print(f"🏆 MATCH COMPLETE! Winner: {self.current_match.match_winner}")
         
         return self._get_arcade_info()
     
@@ -197,16 +232,48 @@ class ArcadeEpisode:
         elif outcome in [RoundOutcome.TIMEOUT, RoundOutcome.ERROR]:
             record.rounds_lost += 1
     
+    def _update_match_record(self, outcome: RoundOutcome):
+        """Update match record when a round ends (integrates with win detection)"""
+        if self.current_match is None:
+            self.current_match = MatchRecord(self.current_opponent)
+        
+        print(f"    [DEBUG] Updating match record. Round outcome: {outcome.value}")
+        print(f"    [DEBUG] Before update: P1={self.current_match.rounds_won_p1}, P2={self.current_match.rounds_won_p2}")
+        
+        if outcome == RoundOutcome.PLAYER_WIN:
+            self.current_match.rounds_won_p1 += 1
+        elif outcome == RoundOutcome.PLAYER_LOSS:
+            self.current_match.rounds_won_p2 += 1
+        # Draw, timeout, and error don't count as wins for either player
+        
+        print(f"    [DEBUG] After update: P1={self.current_match.rounds_won_p1}, P2={self.current_match.rounds_won_p2}")
+        
+        # Check if match is complete (first to 2 wins)
+        if self.current_match.rounds_won_p1 >= 2:
+            self.current_match.match_winner = "PLAYER 1"
+            self.current_match.is_complete = True
+            print(f"    [DEBUG] Match complete! P1 wins. Adding to history immediately.")
+            self.match_history.append(self.current_match)
+            print(f"    [DEBUG] Match added to history. Total matches: {len(self.match_history)}")
+        elif self.current_match.rounds_won_p2 >= 2:
+            self.current_match.match_winner = "PLAYER 2"
+            self.current_match.is_complete = True
+            print(f"    [DEBUG] Match complete! P2 wins. Adding to history immediately.")
+            self.match_history.append(self.current_match)
+            print(f"    [DEBUG] Match added to history. Total matches: {len(self.match_history)}")
+    
+    def _is_match_complete(self) -> bool:
+        """Check if current match is complete"""
+        return self.current_match is not None and self.current_match.is_complete
+    
     def _check_arcade_end(self) -> bool:
         """Check if arcade episode should end"""
-        current_record = self._get_opponent_record()
-        
-        # Game over if lost 2 rounds to current opponent
-        if current_record.is_defeated:
+        # Game over if P1 lost current match (P2 won 2 rounds)
+        if self.current_match and self.current_match.is_p1_defeated:
             self.stats.outcome = ArcadeOutcome.GAME_OVER
             self.stats.end_time = time.time()
             self.is_active = False
-            print(f"GAME OVER: Lost 2 rounds to opponent {self.current_opponent}")
+            print(f"GAME OVER: Lost match to opponent {self.current_opponent}")
             return True
         
         # Check if we've beaten all opponents
@@ -225,11 +292,18 @@ class ArcadeEpisode:
         return current_record.is_beaten
     
     def _progress_to_next_opponent(self):
-        """Progress to the next opponent"""
-        if self._is_opponent_beaten():
-            self.stats.opponents_beaten += 1
-            self.current_opponent += 1
-            print(f"Opponent {self.current_opponent - 1} defeated! Moving to opponent {self.current_opponent}")
+        """Progress to the next opponent (auto-advance after match completion)"""
+        if self._is_match_complete():
+            # Only progress if P1 won the match
+            if self.current_match.is_p1_winner:
+                self.stats.opponents_beaten += 1
+                self.current_opponent += 1
+                print(f"🆕 AUTO-ADVANCING to Opponent {self.current_opponent}")
+                # Create new match for next opponent
+                self.current_match = MatchRecord(self.current_opponent)
+            else:
+                # P1 lost the match - arcade will end via _check_arcade_end
+                print(f"Match lost to opponent {self.current_opponent} - arcade ending")
     
     def _get_opponent_record(self) -> OpponentRecord:
         """Get record against current opponent"""
@@ -240,6 +314,15 @@ class ArcadeEpisode:
     def _get_arcade_info(self) -> Dict[str, Any]:
         """Get current arcade state information"""
         current_record = self._get_opponent_record()
+        
+        match_info = {}
+        if self.current_match:
+            match_info = {
+                'match_p1_wins': self.current_match.rounds_won_p1,
+                'match_p2_wins': self.current_match.rounds_won_p2,
+                'match_complete': self.current_match.is_complete,
+                'match_winner': self.current_match.match_winner,
+            }
         
         return {
             'arcade_active': self.is_active,
@@ -252,6 +335,8 @@ class ArcadeEpisode:
             'arcade_duration': self.stats.duration,
             'arcade_outcome': self.stats.outcome.value,
             'max_opponents': self.max_opponents,
+            'total_matches_completed': len(self.match_history),
+            **match_info,
         }
     
     def is_done(self) -> bool:

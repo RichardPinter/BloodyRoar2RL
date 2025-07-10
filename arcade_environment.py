@@ -3,7 +3,8 @@ import numpy as np
 from typing import Optional, Dict, Any
 from enum import Enum
 
-from game_state_monitor import GameStateMonitor
+from window_capture import WindowCapture
+from health_detector import HealthDetector
 from game_controller import BizHawkController
 
 class GameScreen(Enum):
@@ -28,13 +29,14 @@ class ArcadeEnvironment:
     def __init__(self, window_title: str = "Bloody Roar II (USA) [PlayStation] - BizHawk"):
         self.window_title = window_title
         
-        # Initialize game monitoring (for health bar detection)
+        # Initialize pixel-based health detection
         try:
-            self.monitor = GameStateMonitor(window_title)
-            self.monitor_available = True
+            self.capture = WindowCapture(window_title)
+            self.health_detector = HealthDetector()
+            self.health_detection_available = True
         except Exception as e:
-            print(f"Warning: Could not initialize game monitor: {e}")
-            self.monitor_available = False
+            print(f"Warning: Could not initialize health detection: {e}")
+            self.health_detection_available = False
         
         # Initialize controller (for fast-forwarding)
         try:
@@ -54,12 +56,13 @@ class ArcadeEnvironment:
     def health_bars_visible(self) -> bool:
         """
         Check if health bars are visible (indicates we're in combat)
+        Uses pixel-based detection like RoundSubEpisode
         
         Returns:
             True if health bars are visible, False otherwise
         """
-        if not self.monitor_available:
-            print("Warning: Monitor not available, assuming health bars visible")
+        if not self.health_detection_available:
+            print("Warning: Health detection not available, assuming health bars visible")
             return True
         
         # Throttle health checks to avoid excessive computation
@@ -70,20 +73,22 @@ class ArcadeEnvironment:
         self.last_health_check = current_time
         
         try:
-            # Try to capture current game state
-            game_state = self.monitor.capture_state()
+            # Use pixel-based health detection
+            health_state = self.health_detector.detect(self.capture)
             
-            if game_state is not None:
-                # If we can capture health, we're in combat
-                if (game_state.player1.health > 0 and 
-                    game_state.player2.health > 0 and
-                    game_state.player1.health <= 100 and
-                    game_state.player2.health <= 100):
+            if health_state is not None:
+                # If we can detect valid health bars, we're in combat
+                # Health bars are visible if we get reasonable health values
+                p1_health = health_state.p1_health
+                p2_health = health_state.p2_health
+                
+                if (p1_health >= 0 and p1_health <= 100 and 
+                    p2_health >= 0 and p2_health <= 100):
                     
                     self.current_screen = GameScreen.COMBAT
                     return True
             
-            # If we can't capture valid health, we're probably not in combat
+            # If we can't detect valid health bars, we're probably not in combat
             self.current_screen = GameScreen.MENU
             return False
             
@@ -206,7 +211,7 @@ class ArcadeEnvironment:
             Dictionary with debug information
         """
         return {
-            'monitor_available': self.monitor_available,
+            'health_detection_available': self.health_detection_available,
             'controller_available': self.controller_available,
             'current_screen': self.current_screen.value,
             'health_bars_visible': self.health_bars_visible(),
