@@ -16,6 +16,15 @@ class RoundStatus(Enum):
     WAITING_FOR_RESET = "WAITING_FOR_RESET"
 
 @dataclass
+class MatchRecord:
+    """Record for a single match (best of 3 rounds)"""
+    opponent_number: int
+    rounds_won_p1: int = 0
+    rounds_won_p2: int = 0
+    match_winner: str = ""
+    is_complete: bool = False
+
+@dataclass
 class WinDetectionState:
     """State for tracking win detection"""
     p1_zero_frames: int = 0
@@ -25,6 +34,17 @@ class WinDetectionState:
     zero_threshold: int = 10  # Frames of zero health needed to declare death
     round_winner: str = ""  # Who won the round
     celebration_frames: int = 0  # Frames since winner declared
+    
+    # Match tracking
+    current_opponent: int = 1
+    current_match: MatchRecord = None
+    match_history: list = None  # List of completed matches
+    
+    def __post_init__(self):
+        if self.current_match is None:
+            self.current_match = MatchRecord(self.current_opponent)
+        if self.match_history is None:
+            self.match_history = []
 
 def test_win_detection():
     """
@@ -88,13 +108,23 @@ def test_win_detection():
                 
                 # Check if winner was just declared
                 if win_state.status != RoundStatus.ONGOING:
+                    # Update match record
+                    update_match_record(win_state)
+                    
                     print()  # New line for winner announcement
                     print("🎉 " + "="*60 + " 🎉")
-                    print(f"   WINNER DETECTED: {win_state.round_winner}")
+                    print(f"   ROUND WINNER: {win_state.round_winner}")
                     print(f"   Declared at frame {frame_count} ({elapsed:.1f}s)")
+                    print(f"   Match vs Opponent {win_state.current_opponent}: P1={win_state.current_match.rounds_won_p1} P2={win_state.current_match.rounds_won_p2}")
+                    
+                    # Check if match is complete
+                    if win_state.current_match.is_complete:
+                        print(f"   🏆 MATCH COMPLETE! Winner: {win_state.current_match.match_winner}")
+                        print(f"   Match record added to history (Total matches: {len(win_state.match_history) + 1})")
+                    
                     print("🎉 " + "="*60 + " 🎉")
                     print("Entering celebration phase... waiting for new round to start")
-                    print("(Or press 'r' + Enter to manually reset)")
+                    print("(Press 'r' to reset, 'n' for new opponent, 's' for stats)")
                     win_state.status = RoundStatus.WINNER_DECLARED
                 
             elif win_state.status == RoundStatus.WINNER_DECLARED:
@@ -111,7 +141,7 @@ def test_win_detection():
                     print("Reset complete. Starting new round detection...")
                     continue
                 
-                # Check for manual reset input (Windows compatible)
+                # Check for manual input (Windows compatible)
                 import msvcrt
                 if msvcrt.kbhit():
                     try:
@@ -123,6 +153,21 @@ def test_win_detection():
                             frame_count = 0
                             start_time = time.time()
                             print("Reset complete. Starting new round detection...")
+                            continue
+                        elif key == 'n':
+                            print()
+                            print("🆕 NEW OPPONENT")
+                            start_new_opponent(win_state)
+                            reset_win_detection(win_state)
+                            frame_count = 0
+                            start_time = time.time()
+                            print("Ready for new opponent. Starting round detection...")
+                            continue
+                        elif key == 's':
+                            print()
+                            show_match_statistics(win_state)
+                            print("Press any key to continue...")
+                            msvcrt.getch()
                             continue
                     except:
                         pass
@@ -184,6 +229,72 @@ def update_win_detection(win_state: WinDetectionState, p1_health: float, p2_heal
         win_state.round_winner = "PLAYER 1"
         win_state.winner_declared_frame = frame_count
 
+def update_match_record(win_state: WinDetectionState):
+    """Update match record when a round ends"""
+    if win_state.round_winner == "PLAYER 1":
+        win_state.current_match.rounds_won_p1 += 1
+    elif win_state.round_winner == "PLAYER 2":
+        win_state.current_match.rounds_won_p2 += 1
+    # Double KO doesn't count as a win for either player
+    
+    # Check if match is complete (first to 2 wins)
+    if win_state.current_match.rounds_won_p1 >= 2:
+        win_state.current_match.match_winner = "PLAYER 1"
+        win_state.current_match.is_complete = True
+        win_state.match_history.append(win_state.current_match)
+    elif win_state.current_match.rounds_won_p2 >= 2:
+        win_state.current_match.match_winner = "PLAYER 2"
+        win_state.current_match.is_complete = True
+        win_state.match_history.append(win_state.current_match)
+
+def start_new_opponent(win_state: WinDetectionState):
+    """Start a new opponent (complete current match if not finished)"""
+    # If current match isn't complete, mark it as incomplete and save
+    if not win_state.current_match.is_complete:
+        win_state.current_match.match_winner = "INCOMPLETE"
+        win_state.match_history.append(win_state.current_match)
+    
+    # Start new opponent
+    win_state.current_opponent += 1
+    win_state.current_match = MatchRecord(win_state.current_opponent)
+    print(f"    [DEBUG] Started opponent {win_state.current_opponent}")
+
+def show_match_statistics(win_state: WinDetectionState):
+    """Show detailed match statistics"""
+    print("\n" + "="*80)
+    print("🏆 MATCH STATISTICS")
+    print("="*80)
+    
+    if not win_state.match_history and win_state.current_match.rounds_won_p1 == 0 and win_state.current_match.rounds_won_p2 == 0:
+        print("No matches completed yet.")
+        print("="*80)
+        return
+    
+    # Show completed matches
+    p1_match_wins = 0
+    p2_match_wins = 0
+    
+    for i, match in enumerate(win_state.match_history):
+        status = "✅" if match.is_complete else "❌"
+        print(f"Opponent {match.opponent_number}: P1={match.rounds_won_p1} P2={match.rounds_won_p2} Winner: {match.match_winner} {status}")
+        
+        if match.match_winner == "PLAYER 1":
+            p1_match_wins += 1
+        elif match.match_winner == "PLAYER 2":
+            p2_match_wins += 1
+    
+    # Show current match
+    if not win_state.current_match.is_complete:
+        print(f"Opponent {win_state.current_match.opponent_number}: P1={win_state.current_match.rounds_won_p1} P2={win_state.current_match.rounds_won_p2} Winner: IN PROGRESS ⏳")
+    
+    print("-"*80)
+    print(f"OVERALL RECORD:")
+    print(f"  Player 1 match wins: {p1_match_wins}")
+    print(f"  Player 2 match wins: {p2_match_wins}")
+    print(f"  Total matches: {len(win_state.match_history)}")
+    print(f"  Current opponent: {win_state.current_opponent}")
+    print("="*80)
+
 def reset_win_detection(win_state: WinDetectionState):
     """Reset win detection state for a new round"""
     print(f"    [DEBUG] Resetting: P1 zeros: {win_state.p1_zero_frames} -> 0, P2 zeros: {win_state.p2_zero_frames} -> 0")
@@ -208,6 +319,9 @@ def get_status_display(win_state: WinDetectionState, p1_health: float, p2_health
     p1_info = f"P1: {p1_health:5.1f}% ({win_state.p1_zero_frames} zero)"
     p2_info = f"P2: {p2_health:5.1f}% ({win_state.p2_zero_frames} zero)"
     
+    # Match info
+    match_info = f"Op{win_state.current_opponent} [{win_state.current_match.rounds_won_p1}-{win_state.current_match.rounds_won_p2}]"
+    
     # Status with color indicators
     if win_state.status == RoundStatus.ONGOING:
         status_info = "Status: ONGOING"
@@ -221,7 +335,7 @@ def get_status_display(win_state: WinDetectionState, p1_health: float, p2_health
     else:
         status_info = f"*** {win_state.status.value} ***"
     
-    return f"Frame {frame_count:4d} ({elapsed:6.1f}s) | {p1_info} | {p2_info} | {status_info}"
+    return f"Frame {frame_count:4d} ({elapsed:6.1f}s) | {p1_info} | {p2_info} | {match_info} | {status_info}"
 
 def test_win_detection_with_thresholds():
     """
