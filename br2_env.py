@@ -29,26 +29,20 @@ class BR2Environment(gym.Env):
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0, shape=(12,), dtype=np.float32
         )
-        self.action_space = spaces.Discrete(16)
+        self.action_space = spaces.Discrete(10)
         
-        # Action mapping - More fighting moves!
+        # Action mapping - Simplified for initial training
         self.action_map = {
             0: None,           # No action
             1: "left",         # Move left
             2: "right",        # Move right
-            3: "up",           # Jump/up
-            4: "down",         # Crouch/down
-            5: "punch",        # Light punch
-            6: "kick",         # Light kick
-            7: "heavy_punch",  # Heavy punch
-            8: "heavy_kick",   # Heavy kick
-            9: "block",        # Block/defend
-            10: "grab",        # Grab/throw
-            11: "jump_punch",  # Jump + punch
-            12: "jump_kick",   # Jump + kick
-            13: "crouch_punch", # Down + punch
-            14: "crouch_kick", # Down + kick
-            15: "beast"        # Beast transformation
+            3: "jump",         # Jump
+            4: "squat",        # Squat/crouch
+            5: "punch",        # Punch
+            6: "kick",         # Kick
+            7: "throw",        # Throw/grab
+            8: "transform",    # Transform to beast
+            9: "special"       # Special attack
         }
         
         # State tracking
@@ -78,26 +72,19 @@ class BR2Environment(gym.Env):
                 self.controller.punch()
             elif action_name == "kick":
                 self.controller.kick()  
-            elif action_name == "heavy_punch":
-                self.controller.heavy_punch()
-            elif action_name == "heavy_kick":
-                self.controller.heavy_kick()
-            elif action_name == "grab":
+            elif action_name == "throw":
                 self.controller.grab()
-            elif action_name == "jump_punch":
-                self.controller.jump_punch()
-            elif action_name == "jump_kick":
-                self.controller.jump_kick()
-            elif action_name == "crouch_punch":
-                self.controller.crouch_punch()
-            elif action_name == "crouch_kick":
-                self.controller.crouch_kick()
-            elif action_name == "beast":
+            elif action_name == "transform":
                 self.controller.beast()
-            elif action_name == "block":
-                self.controller.send_action("l2")  # Block button
+            elif action_name == "special":
+                # Special attack - could be heavy punch or kick
+                self.controller.heavy_punch()
+            elif action_name == "jump":
+                self.controller.send_action("up")
+            elif action_name == "squat":
+                self.controller.send_action("down")
             else:
-                # Basic movements
+                # Basic movements (left, right)
                 self.controller.send_action(action_name)
         
         # Small delay to let action take effect
