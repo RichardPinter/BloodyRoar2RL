@@ -111,13 +111,12 @@ def test_win_detection():
                     print("Reset complete. Starting new round detection...")
                     continue
                 
-                # Check for manual reset input (non-blocking)
-                import select
-                import sys
-                if select.select([sys.stdin], [], [], 0)[0]:
+                # Check for manual reset input (Windows compatible)
+                import msvcrt
+                if msvcrt.kbhit():
                     try:
-                        user_input = sys.stdin.readline().strip().lower()
-                        if user_input == 'r':
+                        key = msvcrt.getch().decode('utf-8').lower()
+                        if key == 'r':
                             print()
                             print("🔄 MANUAL RESET")
                             reset_win_detection(win_state)
