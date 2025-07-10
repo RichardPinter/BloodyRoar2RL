@@ -155,15 +155,16 @@ class HealthDetector:
         
         return display
     
-    def health_bars_visible(self, capture: WindowCapture) -> bool:
+    def health_bars_visible(self, capture: WindowCapture, min_health: float = 99.0) -> bool:
         """
-        Check if health bars are visible (indicates we're in combat)
+        Check if health bars are visible and players are at full health (new round ready)
         
         Args:
             capture: WindowCapture instance
+            min_health: Minimum health percentage required for both players (default 99%)
             
         Returns:
-            True if health bars are visible and valid, False otherwise
+            True if both players have nearly full health (new round ready), False otherwise
         """
         # Throttle checks to avoid excessive computation
         current_time = time.time()
@@ -178,18 +179,15 @@ class HealthDetector:
             health_state = self.detect(capture)
             
             if health_state is not None:
-                # Health bars are visible if we get reasonable health values
                 p1_health = health_state.p1_health
                 p2_health = health_state.p2_health
                 
-                # Valid health values indicate visible health bars
-                if (p1_health >= 0 and p1_health <= 100 and 
-                    p2_health >= 0 and p2_health <= 100):
-                    
+                # NEW ROUND READY = both players at nearly full health (99%+ yellow pixels)
+                if (p1_health >= min_health and p2_health >= min_health):
                     self._last_visibility_result = True
                     return True
             
-            # If we can't detect valid health bars, they're not visible
+            # Not ready: health bars not detected OR players not at full health
             self._last_visibility_result = False
             return False
             
@@ -198,34 +196,40 @@ class HealthDetector:
             self._last_visibility_result = False
             return False
     
-    def wait_for_health_bars(self, capture: WindowCapture, timeout: float = 30.0) -> bool:
+    def wait_for_health_bars(self, capture: WindowCapture, timeout: float = 30.0, min_health: float = 99.0) -> bool:
         """
-        Wait until health bars are visible (for round transitions)
+        Wait until health bars are visible with both players at full health (new round ready)
         
         Args:
             capture: WindowCapture instance
             timeout: Maximum time to wait in seconds
+            min_health: Minimum health percentage required for both players
             
         Returns:
-            True if health bars became visible, False if timeout
+            True if new round is ready (both players at full health), False if timeout
         """
-        print("⏳ Waiting for health bars to appear...")
+        print(f"⏳ Waiting for new round to start (both players ≥{min_health:.1f}% health)...")
         start_time = time.time()
         
         while time.time() - start_time < timeout:
-            if self.health_bars_visible(capture):
+            if self.health_bars_visible(capture, min_health):
                 elapsed = time.time() - start_time
-                print(f"✅ Health bars detected after {elapsed:.1f}s - ready to start!")
+                print(f"✅ New round ready after {elapsed:.1f}s - both players at full health!")
                 return True
             
-            # Print status every 5 seconds
+            # Print status every 5 seconds with current health values
             elapsed = time.time() - start_time
             if elapsed > 0 and int(elapsed) % 5 == 0:
-                print(f"   Still waiting for health bars... ({elapsed:.1f}s elapsed)")
+                # Show current health for debugging
+                health_state = self.detect(capture)
+                if health_state:
+                    print(f"   Still waiting... P1={health_state.p1_health:.1f}% P2={health_state.p2_health:.1f}% ({elapsed:.1f}s elapsed)")
+                else:
+                    print(f"   Still waiting for health bars... ({elapsed:.1f}s elapsed)")
             
             time.sleep(0.5)  # Check every 500ms
         
-        print(f"❌ Timeout waiting for health bars after {timeout}s")
+        print(f"❌ Timeout waiting for new round after {timeout}s")
         return False
 
 
