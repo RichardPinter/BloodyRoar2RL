@@ -2,7 +2,10 @@
 from collections import deque
 from typing import List, Optional
 import numpy as np
-from game_state import GameState, PlayerState
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from detection.game_state import GameState, PlayerState
 
 class StateHistory:
     """Manages game state history for temporal features"""

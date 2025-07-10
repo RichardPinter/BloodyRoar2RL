@@ -1,7 +1,9 @@
 # test_all_controls_complete.py
 import time
 import os
-from controller_config import ACTIONS, get_button_name, get_all_actions
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from control.controller_config import ACTIONS, get_button_name, get_all_actions
 
 class BizHawkController:
     def __init__(self):

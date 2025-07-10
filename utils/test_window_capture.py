@@ -1,7 +1,10 @@
 # test_window_capture.py
 import cv2
 import time
-from window_capture import WindowCapture
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from detection.window_capture import WindowCapture
 
 def test_window_capture():
     """Test window capture with visualization"""

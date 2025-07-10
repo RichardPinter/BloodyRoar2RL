@@ -16,8 +16,10 @@ import time
 import os
 from datetime import datetime
 from typing import List, Tuple, Dict, Any
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from slow_rl_environment import SlowRLEnvironment
+from core.slow_rl_environment import SlowRLEnvironment
 
 
 class PolicyNetwork(nn.Module):

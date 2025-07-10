@@ -17,9 +17,12 @@ import numpy as np
 from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
 from datetime import datetime
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from round_sub_episode import RoundStateMonitor, GameState, RoundOutcome
-from game_controller import BizHawkController
+from core.round_sub_episode import RoundStateMonitor, GameState, RoundOutcome
+from control.game_controller import BizHawkController
 
 @dataclass
 class SlowObservation:

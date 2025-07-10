@@ -15,10 +15,13 @@ import numpy as np
 from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from window_capture import WindowCapture
-from health_detector import HealthDetector, HealthState
-from fighter_detector import FighterDetector, FighterDetection
+from detection.window_capture import WindowCapture
+from detection.health_detector import HealthDetector, HealthState
+from detection.fighter_detector import FighterDetector, FighterDetection
 
 class RoundOutcome(Enum):
     """Possible outcomes of a round"""

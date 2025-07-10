@@ -14,8 +14,11 @@ Helps identify bottlenecks and calculate actual FPS.
 import time
 import statistics
 from typing import List, Dict
-from window_capture import WindowCapture
-from fighter_detector import FighterDetector
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from detection.window_capture import WindowCapture
+from detection.fighter_detector import FighterDetector
 
 class DetectionPerformanceProfiler:
     """Profile performance of character detection pipeline"""
@@ -69,7 +72,7 @@ class DetectionPerformanceProfiler:
                     if center_y < self.detector.min_y_position:
                         continue
                     
-                    from fighter_detector import Fighter
+                    from detection.fighter_detector import Fighter
                     fighter = Fighter(
                         center=(center_x, center_y),
                         bbox=(int(x1), int(y1), int(x2), int(y2)),

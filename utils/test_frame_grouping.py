@@ -10,7 +10,10 @@ Collects 20 frames of game state and shows:
 
 import time
 from datetime import datetime
-from round_sub_episode import RoundStateMonitor
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.round_sub_episode import RoundStateMonitor
 
 def collect_20_frames():
     """Collect 20 frames of game state data"""
