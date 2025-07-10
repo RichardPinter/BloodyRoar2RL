@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-4-Frame RL Environment
+20-Frame RL Environment
 
-Takes actions every 4 frames, measures rewards from state changes.
-Solves the action-reward timing issue.
+Takes actions every 20 frames (~333ms), measures rewards from state changes.
+Solves the action-reward timing issue with proper action execution time.
 """
 
 import time
@@ -30,22 +30,22 @@ class RLState:
     # Frame count
     frame: int
 
-class RL4FrameEnvironment:
+class RL20FrameEnvironment:
     """
-    RL Environment that acts every 4 frames and measures cumulative rewards
+    RL Environment that acts every 20 frames and measures cumulative rewards
     """
     
     def __init__(self):
-        print("Initializing 4-Frame RL Environment...")
+        print("Initializing 20-Frame RL Environment...")
         
         # Initialize components
         self.round_monitor = RoundStateMonitor()
         self.controller = BizHawkController()
         
-        # RL configuration
-        self.actions = get_all_actions()
+        # RL configuration - simplified to 2 actions
+        self.actions = ['kick', 'punch']  # Only 2 actions for simplicity
         self.action_space_size = len(self.actions)
-        self.frame_skip = 4  # Act every 4 frames
+        self.frame_skip = 20  # Act every 20 frames (~333ms)
         
         # State tracking
         self.current_state = None
@@ -55,7 +55,7 @@ class RL4FrameEnvironment:
         
         print(f"Action space: {self.action_space_size} actions")
         print(f"Actions: {self.actions}")
-        print(f"Frame skip: {self.frame_skip}")
+        print(f"Frame skip: {self.frame_skip} (~{self.frame_skip/60*1000:.0f}ms between actions)")
     
     def reset(self) -> np.ndarray:
         """Reset environment for new episode"""
@@ -81,7 +81,7 @@ class RL4FrameEnvironment:
         """
         Take an RL step:
         1. Execute action
-        2. Wait 4 frames  
+        2. Wait 20 frames (~333ms)
         3. Measure state change
         4. Calculate reward
         """
@@ -96,7 +96,7 @@ class RL4FrameEnvironment:
         
         self._execute_action(action_name)
         
-        # Wait 4 frames and collect states
+        # Wait 20 frames and collect states
         states_during = self._collect_states_for_frames(self.frame_skip)
         
         # Get final state after action
@@ -149,9 +149,11 @@ class RL4FrameEnvironment:
             rl_state = self._get_rl_state()
             states.append(rl_state)
             
-            # Debug output every frame
+            # Debug output for key frames only (reduce spam)
             if frame_i == 0:
                 print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}%")
+            elif frame_i == num_frames // 2:  # Middle frame
+                print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% (mid)")
             elif frame_i == num_frames - 1:
                 print(f"    Frame +{frame_i+1}: P1={rl_state.health[0]:.1f}% P2={rl_state.health[1]:.1f}% (final)")
         
@@ -227,7 +229,7 @@ class RL4FrameEnvironment:
             return True
         
         # End if too many steps (prevent infinite episodes)
-        if self.episode_step >= 1000:  # ~67 seconds at 4-frame steps
+        if self.episode_step >= 200:  # ~67 seconds at 20-frame steps
             return True
         
         return False
@@ -247,11 +249,11 @@ class RL4FrameEnvironment:
 
 
 def test_rl_environment():
-    """Test the 4-frame RL environment"""
-    print("🧪 Testing 4-Frame RL Environment")
+    """Test the 20-frame RL environment"""
+    print("🧪 Testing 20-Frame RL Environment")
     print("=" * 60)
     
-    env = RL4FrameEnvironment()
+    env = RL20FrameEnvironment()
     
     try:
         # Reset environment
