@@ -85,6 +85,25 @@ class BizHawkController:
     def select(self):
         self.send_action("select")
     
+    # Missing methods for simple_action_test.py
+    def throw(self):
+        self.send_action("throw")
+    
+    def special(self):
+        self.send_action("special")
+    
+    def block(self):
+        self.send_action("block")
+    
+    def transform(self):
+        self.send_action("transform")
+    
+    def jump(self):
+        self.send_action("jump")
+    
+    def squat(self):
+        self.send_action("squat")
+    
     # Hold actions
     def hold_right(self, frames=60):
         self.send_action(f"right:{frames}")
