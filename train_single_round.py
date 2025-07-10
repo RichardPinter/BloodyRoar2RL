@@ -59,16 +59,21 @@ def train_single_round():
         
         # Round finished
         print(f"\nRound finished!")
-        print(f"Final state - P1 HP: {env.current_state.player1.health:.1f}%, P2 HP: {env.current_state.player2.health:.1f}%")
         print(f"Total steps: {steps}")
         print(f"Total reward: {total_reward:.2f}")
         
-        if env.current_state.player1.health > env.current_state.player2.health:
-            print("Result: PLAYER 1 WINS!")
-        elif env.current_state.player2.health > env.current_state.player1.health:
-            print("Result: PLAYER 2 WINS!")
+        # Check if we have a valid final state
+        if env.current_state is not None:
+            print(f"Final state - P1 HP: {env.current_state.player1.health:.1f}%, P2 HP: {env.current_state.player2.health:.1f}%")
+            
+            if env.current_state.player1.health > env.current_state.player2.health:
+                print("Result: PLAYER 1 WINS!")
+            elif env.current_state.player2.health > env.current_state.player1.health:
+                print("Result: PLAYER 2 WINS!")
+            else:
+                print("Result: DRAW!")
         else:
-            print("Result: DRAW!")
+            print("Final state: Could not capture final game state")
             
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")

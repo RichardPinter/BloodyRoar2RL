@@ -5,7 +5,7 @@ import os
 class BizHawkController:
     def __init__(self):
         self.actions_file = r"C:\Users\richa\Desktop\Personal\Uni\ShenLong\actions.txt"
-        self.action_delay = 0.3  # 300ms between actions
+        self.action_delay = 0.05  # 50ms between actions for faster training
         
         # Ensure directory exists
         os.makedirs(os.path.dirname(self.actions_file), exist_ok=True)
