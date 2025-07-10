@@ -307,27 +307,24 @@ class SlowRLEnvironment:
         ]).astype(np.float32)
     
     def _calculate_reward(self, state_before: Optional[SlowState], state_after: SlowState) -> float:
-        """Calculate reward from state changes"""
+        """Calculate reward from state changes - HEALTH ONLY"""
         
-        # Health-based rewards
-        health_reward = state_after.p1_health_delta * 0.01 - state_after.p2_health_delta * 0.01
+        # P1 health change: positive if health increases, negative if decreases
+        p1_health_reward = state_after.p1_health_delta * 0.1
         
-        # Movement reward (encourage activity but not excessive movement)
-        movement_reward = min(state_after.p1_movement_distance * 0.001, 0.1)
+        # P2 health change: negative if health increases, positive if decreases
+        p2_health_reward = -state_after.p2_health_delta * 0.1
         
-        # Distance reward (encourage staying in fighting range)
-        optimal_distance = 200.0
-        distance_penalty = abs(state_after.average_distance - optimal_distance) * -0.001
+        # Total health-based reward
+        health_reward = p1_health_reward + p2_health_reward
         
         # Round outcome bonus
-        outcome_reward = 0.0
         if self.round_monitor.current_state.round_outcome == RoundOutcome.PLAYER_WIN:
-            outcome_reward = 10.0
+            health_reward += 10.0
         elif self.round_monitor.current_state.round_outcome == RoundOutcome.PLAYER_LOSS:
-            outcome_reward = -10.0
+            health_reward -= 10.0
         
-        total_reward = health_reward + movement_reward + distance_penalty + outcome_reward
-        return total_reward
+        return health_reward
     
     def _is_episode_done(self) -> bool:
         """Check if episode should end"""
