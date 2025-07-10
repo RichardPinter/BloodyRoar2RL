@@ -120,11 +120,11 @@ def test_win_detection():
                     # Check if match is complete
                     if win_state.current_match.is_complete:
                         print(f"   🏆 MATCH COMPLETE! Winner: {win_state.current_match.match_winner}")
-                        print(f"   Match record added to history (Total matches: {len(win_state.match_history) + 1})")
+                        print(f"   🆕 AUTOMATICALLY ADVANCED TO OPPONENT {win_state.current_opponent}")
                     
                     print("🎉 " + "="*60 + " 🎉")
                     print("Entering celebration phase... waiting for new round to start")
-                    print("(Press 'r' to reset, 'n' for new opponent, 's' for stats)")
+                    print("(Press 'r' to reset, 's' for stats)")
                     win_state.status = RoundStatus.WINNER_DECLARED
                 
             elif win_state.status == RoundStatus.WINNER_DECLARED:
@@ -153,15 +153,6 @@ def test_win_detection():
                             frame_count = 0
                             start_time = time.time()
                             print("Reset complete. Starting new round detection...")
-                            continue
-                        elif key == 'n':
-                            print()
-                            print("🆕 NEW OPPONENT")
-                            start_new_opponent(win_state)
-                            reset_win_detection(win_state)
-                            frame_count = 0
-                            start_time = time.time()
-                            print("Ready for new opponent. Starting round detection...")
                             continue
                         elif key == 's':
                             print()
@@ -231,33 +222,41 @@ def update_win_detection(win_state: WinDetectionState, p1_health: float, p2_heal
 
 def update_match_record(win_state: WinDetectionState):
     """Update match record when a round ends"""
+    print(f"    [DEBUG] Updating match record. Round winner: {win_state.round_winner}")
+    print(f"    [DEBUG] Before update: P1={win_state.current_match.rounds_won_p1}, P2={win_state.current_match.rounds_won_p2}")
+    
     if win_state.round_winner == "PLAYER 1":
         win_state.current_match.rounds_won_p1 += 1
     elif win_state.round_winner == "PLAYER 2":
         win_state.current_match.rounds_won_p2 += 1
     # Double KO doesn't count as a win for either player
     
+    print(f"    [DEBUG] After update: P1={win_state.current_match.rounds_won_p1}, P2={win_state.current_match.rounds_won_p2}")
+    
     # Check if match is complete (first to 2 wins)
     if win_state.current_match.rounds_won_p1 >= 2:
         win_state.current_match.match_winner = "PLAYER 1"
         win_state.current_match.is_complete = True
+        print(f"    [DEBUG] Match complete! P1 wins. Adding to history immediately.")
         win_state.match_history.append(win_state.current_match)
+        print(f"    [DEBUG] Match added to history. Total matches: {len(win_state.match_history)}")
+        # Auto-start new opponent
+        start_new_opponent(win_state)
     elif win_state.current_match.rounds_won_p2 >= 2:
         win_state.current_match.match_winner = "PLAYER 2"
         win_state.current_match.is_complete = True
+        print(f"    [DEBUG] Match complete! P2 wins. Adding to history immediately.")
         win_state.match_history.append(win_state.current_match)
+        print(f"    [DEBUG] Match added to history. Total matches: {len(win_state.match_history)}")
+        # Auto-start new opponent
+        start_new_opponent(win_state)
 
 def start_new_opponent(win_state: WinDetectionState):
-    """Start a new opponent (complete current match if not finished)"""
-    # If current match isn't complete, mark it as incomplete and save
-    if not win_state.current_match.is_complete:
-        win_state.current_match.match_winner = "INCOMPLETE"
-        win_state.match_history.append(win_state.current_match)
-    
-    # Start new opponent
+    """Automatically start a new opponent after match completion"""
+    # Create new match for next opponent
     win_state.current_opponent += 1
     win_state.current_match = MatchRecord(win_state.current_opponent)
-    print(f"    [DEBUG] Started opponent {win_state.current_opponent}")
+    print(f"    [DEBUG] 🆕 AUTO-STARTED Opponent {win_state.current_opponent}")
 
 def show_match_statistics(win_state: WinDetectionState):
     """Show detailed match statistics"""
@@ -265,8 +264,11 @@ def show_match_statistics(win_state: WinDetectionState):
     print("🏆 MATCH STATISTICS")
     print("="*80)
     
+    print(f"[DEBUG] Match history length: {len(win_state.match_history)}")
+    print(f"[DEBUG] Current match: Op{win_state.current_match.opponent_number}, P1={win_state.current_match.rounds_won_p1}, P2={win_state.current_match.rounds_won_p2}, Complete={win_state.current_match.is_complete}")
+    
     if not win_state.match_history and win_state.current_match.rounds_won_p1 == 0 and win_state.current_match.rounds_won_p2 == 0:
-        print("No matches completed yet.")
+        print("No matches played yet.")
         print("="*80)
         return
     
@@ -278,20 +280,24 @@ def show_match_statistics(win_state: WinDetectionState):
         status = "✅" if match.is_complete else "❌"
         print(f"Opponent {match.opponent_number}: P1={match.rounds_won_p1} P2={match.rounds_won_p2} Winner: {match.match_winner} {status}")
         
-        if match.match_winner == "PLAYER 1":
+        if match.match_winner == "PLAYER 1" and match.is_complete:
             p1_match_wins += 1
-        elif match.match_winner == "PLAYER 2":
+        elif match.match_winner == "PLAYER 2" and match.is_complete:
             p2_match_wins += 1
     
-    # Show current match
-    if not win_state.current_match.is_complete:
-        print(f"Opponent {win_state.current_match.opponent_number}: P1={win_state.current_match.rounds_won_p1} P2={win_state.current_match.rounds_won_p2} Winner: IN PROGRESS ⏳")
+    # Show current match if it has any rounds played
+    if win_state.current_match.rounds_won_p1 > 0 or win_state.current_match.rounds_won_p2 > 0:
+        if win_state.current_match.is_complete:
+            status = f"COMPLETE - Winner: {win_state.current_match.match_winner} ✅"
+        else:
+            status = "IN PROGRESS ⏳"
+        print(f"Opponent {win_state.current_match.opponent_number}: P1={win_state.current_match.rounds_won_p1} P2={win_state.current_match.rounds_won_p2} {status}")
     
     print("-"*80)
     print(f"OVERALL RECORD:")
     print(f"  Player 1 match wins: {p1_match_wins}")
     print(f"  Player 2 match wins: {p2_match_wins}")
-    print(f"  Total matches: {len(win_state.match_history)}")
+    print(f"  Total completed matches: {len([m for m in win_state.match_history if m.is_complete])}")
     print(f"  Current opponent: {win_state.current_opponent}")
     print("="*80)
 
