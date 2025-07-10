@@ -7,8 +7,7 @@ Automatically sends punches at adjustable intervals while showing health changes
 """
 
 import time
-from window_capture import WindowCapture
-from health_detector import HealthDetector
+from round_sub_episode import RoundStateMonitor
 from game_controller import BizHawkController
 
 # === EASY TIMING CONTROL ===
@@ -27,10 +26,12 @@ def main():
     
     # Initialize components
     try:
-        capture = WindowCapture("Bloody Roar II (USA) [PlayStation] - BizHawk")
-        health_detector = HealthDetector()
+        round_monitor = RoundStateMonitor()
         controller = BizHawkController()
         print("✅ All components initialized")
+        
+        # Reset round monitor
+        round_monitor.reset()
         
         # Test controller immediately
         print("🧪 Testing controller with one punch...")
@@ -60,13 +61,10 @@ def main():
             current_time = time.time()
             elapsed = current_time - start_time
             
-            # Get current health
-            health_state = health_detector.detect(capture)
-            if health_state:
-                p1_health = health_state.p1_health
-                p2_health = health_state.p2_health
-            else:
-                p1_health = p2_health = 0.0
+            # Get current health using the working RoundStateMonitor
+            game_state = round_monitor.get_current_state()
+            p1_health = game_state.p1_health
+            p2_health = game_state.p2_health
             
             # Check if it's time to punch
             time_since_last_punch = current_time - last_punch_time
