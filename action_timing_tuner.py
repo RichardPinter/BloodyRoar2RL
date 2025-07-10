@@ -3,7 +3,7 @@
 Action Timing Tuner
 
 Simple script to find the optimal action frequency.
-Automatically sends punches at adjustable intervals while showing health changes.
+Automatically sends kicks at adjustable intervals while showing health changes.
 """
 
 import time
@@ -11,7 +11,7 @@ from round_sub_episode import RoundStateMonitor
 from game_controller import BizHawkController
 
 # === EASY TIMING CONTROL ===
-PUNCH_INTERVAL = 0.5  # Seconds between punches (CHANGE THIS TO TEST)
+KICK_INTERVAL = 0.5  # Seconds between kicks (CHANGE THIS TO TEST)
 # Try: 0.2 (fast), 0.5 (medium), 1.0 (slow), 1.5 (very slow)
 
 DISPLAY_EVERY_N_FRAMES = 3  # Show health every 3 frames (reduce spam)
@@ -19,7 +19,7 @@ DISPLAY_EVERY_N_FRAMES = 3  # Show health every 3 frames (reduce spam)
 def main():
     print("🥊 Action Timing Tuner")
     print("=" * 50)
-    print(f"Punch interval: {PUNCH_INTERVAL} seconds")
+    print(f"Kick interval: {KICK_INTERVAL} seconds")
     print(f"Health display: Every {DISPLAY_EVERY_N_FRAMES} frames")
     print("Press Ctrl+C to stop")
     print("-" * 50)
@@ -33,10 +33,10 @@ def main():
         # Reset round monitor
         round_monitor.reset()
         
-        # Test controller immediately
-        print("🧪 Testing controller with one punch...")
-        controller.punch()
-        print("✅ Test punch sent")
+        # Test controller immediately with kick (we know this worked before)
+        print("🧪 Testing controller with one kick...")
+        controller.kick()
+        print("✅ Test kick sent")
         time.sleep(1)  # Wait to see if it worked
         
     except Exception as e:
@@ -45,9 +45,9 @@ def main():
     
     # Timing variables
     start_time = time.time()
-    last_punch_time = start_time - PUNCH_INTERVAL  # Start immediately ready to punch
+    last_kick_time = start_time - KICK_INTERVAL  # Start immediately ready to kick
     frame_count = 0
-    punches_sent = 0
+    kicks_sent = 0
     
     # Health tracking
     last_p1_health = 100.0
@@ -66,20 +66,20 @@ def main():
             p1_health = game_state.p1_health
             p2_health = game_state.p2_health
             
-            # Check if it's time to punch
-            time_since_last_punch = current_time - last_punch_time
-            if time_since_last_punch >= PUNCH_INTERVAL:
-                punches_sent += 1
-                print(f"\n[{elapsed:6.3f}s] *** PUNCH #{punches_sent} SENT *** (Frame {frame_count})")
-                print(f"  Debug: time_since_last={time_since_last_punch:.3f}s, interval={PUNCH_INTERVAL}s")
+            # Check if it's time to kick
+            time_since_last_kick = current_time - last_kick_time
+            if time_since_last_kick >= KICK_INTERVAL:
+                kicks_sent += 1
+                print(f"\n[{elapsed:6.3f}s] *** KICK #{kicks_sent} SENT *** (Frame {frame_count})")
+                print(f"  Debug: time_since_last={time_since_last_kick:.3f}s, interval={KICK_INTERVAL}s")
                 
                 try:
-                    controller.punch()
-                    print("  ✅ controller.punch() completed")
+                    controller.kick()  # Use kick instead of punch
+                    print("  ✅ controller.kick() completed")
                 except Exception as e:
-                    print(f"  ❌ controller.punch() failed: {e}")
+                    print(f"  ❌ controller.kick() failed: {e}")
                 
-                last_punch_time = current_time
+                last_kick_time = current_time
             
             # Display health every N frames (reduce spam)
             if frame_count % DISPLAY_EVERY_N_FRAMES == 0:
@@ -113,18 +113,18 @@ def main():
     
     except KeyboardInterrupt:
         elapsed = time.time() - start_time
-        total_punches = punches_sent
+        total_kicks = kicks_sent
         
         print(f"\n\n⏹️  Tuning session stopped")
         print(f"Duration: {elapsed:.1f}s")
-        print(f"Total punches sent: {total_punches}")
-        print(f"Average punch frequency: {total_punches/elapsed:.2f} punches/second")
-        print(f"Configured interval: {PUNCH_INTERVAL}s")
+        print(f"Total kicks sent: {total_kicks}")
+        print(f"Average kick frequency: {total_kicks/elapsed:.2f} kicks/second")
+        print(f"Configured interval: {KICK_INTERVAL}s")
         
-        if total_punches > 0:
-            print(f"\n💡 To test different timing, change PUNCH_INTERVAL:")
-            print(f"   - Faster: PUNCH_INTERVAL = {PUNCH_INTERVAL/2:.1f}")
-            print(f"   - Slower: PUNCH_INTERVAL = {PUNCH_INTERVAL*2:.1f}")
+        if total_kicks > 0:
+            print(f"\n💡 To test different timing, change KICK_INTERVAL:")
+            print(f"   - Faster: KICK_INTERVAL = {KICK_INTERVAL/2:.1f}")
+            print(f"   - Slower: KICK_INTERVAL = {KICK_INTERVAL*2:.1f}")
     
     except Exception as e:
         print(f"\n❌ Error during tuning: {e}")
