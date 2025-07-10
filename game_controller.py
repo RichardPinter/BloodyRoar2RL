@@ -24,10 +24,11 @@ class BizHawkController:
     
     def send_action(self, action):
         """Write action to file"""
+        print(f"send_action called with: {action}")  # DEBUG
         try:
             with open(self.actions_file, 'w') as f:
                 f.write(action)
-            print(f"Sent: {action}")
+            print(f"Successfully wrote: {action} to {self.actions_file}")  # DEBUG
             # No delay here - timing handled by environment
         except Exception as e:
             print(f"Error sending action: {e}")
@@ -99,9 +100,11 @@ class BizHawkController:
         self.send_action("transform")
     
     def jump(self):
+        print("jump() method called!")  # DEBUG
         self.send_action("jump")
     
     def squat(self):
+        print("squat() method called!")  # DEBUG
         self.send_action("squat")
     
     # Hold actions
