@@ -189,13 +189,18 @@ class PPOAgent:
         
         return policy_loss.item(), value_loss.item()
         
-    def save(self, path: str):
-        """Save model weights"""
-        torch.save({
+    def save(self, path: str, metadata: dict = None):
+        """Save model weights and optional metadata"""
+        checkpoint = {
             'policy_state_dict': self.policy.state_dict(),
             'value_state_dict': self.value.state_dict(),
             'training_step': self.training_step
-        }, path)
+        }
+        
+        if metadata:
+            checkpoint['metadata'] = metadata
+            
+        torch.save(checkpoint, path)
         print(f"💾 Model saved to {path}")
         
     def load(self, path: str):
