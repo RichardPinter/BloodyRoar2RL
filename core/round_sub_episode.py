@@ -286,13 +286,71 @@ class RoundStateMonitor:
     
     def analyze_winner_from_history(self) -> tuple[Optional[str], dict]:
         """
-        Analyze health history to find winner based on longest zero streak
+        Analyze health history to find winner:
+        1. First check for persistent health bar disappearance (UI timeout)
+        2. If found, use health values from before disappearance  
+        3. Otherwise use zero streak analysis for actual deaths
         
         Returns:
             (winner, analysis_details)
         """
         if not self.health_history:
             return None, {"error": "No health history available"}
+        
+        # Step 1: Find persistent health bar disappearance (3+ consecutive both=0 frames)
+        disappearance_start = None
+        consecutive_zeros = 0
+        
+        # Look backwards through history
+        for i in range(len(self.health_history) - 1, -1, -1):
+            timestamp, p1_health, p2_health, frame_count = self.health_history[i]
+            
+            if p1_health <= 0.0 and p2_health <= 0.0:
+                consecutive_zeros += 1
+                if consecutive_zeros >= 3:  # Persistent disappearance found
+                    disappearance_start = i + 2  # Index of start of 3-frame sequence
+                    break
+            else:
+                consecutive_zeros = 0  # Reset counter
+        
+        # Step 2: If we found persistent disappearance, use pre-disappearance health
+        if disappearance_start is not None and disappearance_start > 0:
+            # Get health from just before disappearance
+            pre_disappearance_idx = disappearance_start - 1
+            _, p1_health_before, p2_health_before, frame_before = self.health_history[pre_disappearance_idx]
+            
+            # Determine winner based on health before UI disappeared
+            if p1_health_before > p2_health_before:
+                winner = "PLAYER 1"
+                reason = f"Higher health before UI timeout: P1={p1_health_before:.1f}% > P2={p2_health_before:.1f}%"
+            elif p2_health_before > p1_health_before:
+                winner = "PLAYER 2"
+                reason = f"Higher health before UI timeout: P2={p2_health_before:.1f}% > P1={p1_health_before:.1f}%"
+            else:
+                winner = "DRAW"
+                reason = f"Equal health before UI timeout: P1={p1_health_before:.1f}% = P2={p2_health_before:.1f}%"
+            
+            analysis = {
+                "winner": winner,
+                "reason": reason,
+                "method": "pre_timeout_health",
+                "health_before_timeout": {
+                    "p1": p1_health_before,
+                    "p2": p2_health_before,
+                    "frame": frame_before
+                },
+                "ui_disappeared_at_frame": self.health_history[disappearance_start][3],
+                "consecutive_zero_frames": consecutive_zeros,
+                "total_frames_analyzed": len(self.health_history)
+            }
+            
+            return winner, analysis
+        
+        # Step 3: No persistent disappearance found - use zero streak analysis for actual deaths
+        return self._analyze_winner_by_zero_streaks()
+    
+    def _analyze_winner_by_zero_streaks(self) -> tuple[Optional[str], dict]:
+        """Analyze winner based on zero health streaks (for actual player deaths)"""
         
         # Calculate zero streaks for both players
         p1_zero_streaks = []
@@ -357,6 +415,7 @@ class RoundStateMonitor:
         analysis = {
             "winner": winner,
             "reason": reason,
+            "method": "zero_streak_analysis",
             "p1_total_zero_frames": p1_total_zero_frames,
             "p2_total_zero_frames": p2_total_zero_frames,
             "p1_max_zero_streak": p1_max_streak,
@@ -380,10 +439,21 @@ class RoundStateMonitor:
         
         print(f"\n🔍 WINNER ANALYSIS (Health History):")
         print(f"   Winner: {winner}")
+        print(f"   Method: {analysis['method']}")
         print(f"   Reason: {analysis['reason']}")
-        print(f"   P1 zero streaks: {analysis['p1_zero_streaks']} (total: {analysis['p1_total_zero_frames']} frames)")
-        print(f"   P2 zero streaks: {analysis['p2_zero_streaks']} (total: {analysis['p2_total_zero_frames']} frames)")
-        print(f"   Final health: P1={analysis['final_p1_health']:.1f}% P2={analysis['final_p2_health']:.1f}%")
+        
+        if analysis['method'] == 'pre_timeout_health':
+            # UI timeout scenario - show health before bars disappeared
+            health_before = analysis['health_before_timeout']
+            print(f"   Health before timeout: P1={health_before['p1']:.1f}% P2={health_before['p2']:.1f}% (frame {health_before['frame']})")
+            print(f"   UI disappeared at frame: {analysis['ui_disappeared_at_frame']}")
+            print(f"   Consecutive zero frames: {analysis['consecutive_zero_frames']}")
+        else:
+            # Zero streak analysis - show detailed death analysis
+            print(f"   P1 zero streaks: {analysis['p1_zero_streaks']} (total: {analysis['p1_total_zero_frames']} frames)")
+            print(f"   P2 zero streaks: {analysis['p2_zero_streaks']} (total: {analysis['p2_total_zero_frames']} frames)")
+            print(f"   Final health: P1={analysis['final_p1_health']:.1f}% P2={analysis['final_p2_health']:.1f}%")
+        
         print(f"   Frames analyzed: {analysis['total_frames_analyzed']}")
     
     def wait_for_round_ready(self, timeout: float = 30.0) -> bool:
