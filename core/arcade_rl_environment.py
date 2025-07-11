@@ -26,13 +26,13 @@ from core.match_rl_environment import MatchRLEnvironment
 
 @dataclass
 class ArcadeState:
-    """Arcade progress tracking"""
-    arcade_match_number: int  # Current match (1-8)
-    total_wins: int          # Matches won so far
-    total_losses: int        # Should be 0 or arcade ends
-    is_final_match: bool     # True if this is match 8
-    arcade_active: bool      # False after 8 wins or 1 loss
-    arcade_completed: bool   # True only if all 8 matches won
+    """Arcade progress tracking with checkpoint system"""
+    current_opponent: int    # Current opponent number (1-8) - checkpoint level
+    total_wins: int          # Total matches won across all opponents
+    total_attempts: int      # Total match attempts (includes losses)
+    is_final_opponent: bool  # True if facing opponent 8
+    arcade_active: bool      # Always True until all 8 opponents beaten
+    arcade_completed: bool   # True only if all 8 opponents beaten
 
 class ArcadeRLEnvironment:
     """
@@ -52,10 +52,10 @@ class ArcadeRLEnvironment:
         
         # Arcade state
         self.arcade_state = ArcadeState(
-            arcade_match_number=0,
+            current_opponent=0,
             total_wins=0,
-            total_losses=0,
-            is_final_match=False,
+            total_attempts=0,
+            is_final_opponent=False,
             arcade_active=False,
             arcade_completed=False
         )
@@ -112,38 +112,46 @@ class ArcadeRLEnvironment:
         # Check for match completion
         if match_info.get('match_completed', False):
             match_winner = match_info.get('match_winner')
+            self.arcade_state.total_attempts += 1
             
             if match_winner == 'PLAYER 1':
-                # Player won the match
+                # Player won against current opponent
                 self.arcade_state.total_wins += 1
-                print(f"\n🏆 ARCADE: Match {self.arcade_state.arcade_match_number} WON!")
-                print(f"   Progress: {self.arcade_state.total_wins}/{self.matches_to_win} wins")
+                print(f"\n🏆 ARCADE: Defeated Opponent {self.arcade_state.current_opponent}!")
+                print(f"   Total progress: {self.arcade_state.total_wins}/{self.matches_to_win} opponents beaten")
                 
-                # Check for arcade completion
-                if self.arcade_state.total_wins >= self.matches_to_win:
+                # Advance to next opponent
+                if self.arcade_state.current_opponent >= self.matches_to_win:
+                    # Completed arcade - beat all opponents
                     self.arcade_state.arcade_completed = True
                     self.arcade_state.arcade_active = False
                     total_reward += 100.0  # Arcade completion bonus
-                    print(f"\n🎉 ARCADE COMPLETED! Won all {self.matches_to_win} matches!")
+                    print(f"\n🎉 ARCADE COMPLETED! Beat all {self.matches_to_win} opponents!")
                     self._record_arcade_result(success=True)
+                else:
+                    # Advance to next opponent
+                    self.arcade_state.current_opponent += 1
+                    self.arcade_state.is_final_opponent = (self.arcade_state.current_opponent == self.matches_to_win)
+                    print(f"   ➡️  Advancing to Opponent {self.arcade_state.current_opponent}")
+                    if self.arcade_state.is_final_opponent:
+                        print(f"   🔥 FINAL OPPONENT! Beat this to complete arcade!")
             else:
-                # Player lost the match
-                self.arcade_state.total_losses += 1
-                self.arcade_state.arcade_active = False
-                total_reward -= 50.0  # Arcade failure penalty
-                print(f"\n💀 ARCADE OVER! Lost match {self.arcade_state.arcade_match_number}")
-                print(f"   Final record: {self.arcade_state.total_wins}-{self.arcade_state.total_losses}")
-                self._record_arcade_result(success=False)
+                # Player lost - trigger auto-restart at same opponent
+                print(f"\n💀 LOST to Opponent {self.arcade_state.current_opponent}")
+                print(f"   🔄 AUTO-RESTART: Will face Opponent {self.arcade_state.current_opponent} again")
+                print(f"   Progress preserved: {self.arcade_state.total_wins}/{self.matches_to_win} opponents beaten")
+                # NOTE: arcade_active stays True, current_opponent unchanged
+                self._trigger_auto_restart()
         
         # Add arcade info
         arcade_info = match_info.copy()
         arcade_info.update({
-            'arcade_match_number': self.arcade_state.arcade_match_number,
+            'current_opponent': self.arcade_state.current_opponent,
             'arcade_wins': self.arcade_state.total_wins,
-            'arcade_losses': self.arcade_state.total_losses,
+            'arcade_attempts': self.arcade_state.total_attempts,
             'arcade_active': self.arcade_state.arcade_active,
             'arcade_completed': self.arcade_state.arcade_completed,
-            'is_final_match': self.arcade_state.is_final_match
+            'is_final_opponent': self.arcade_state.is_final_opponent
         })
         
         return arcade_state, total_reward, round_done, arcade_info
@@ -156,51 +164,96 @@ class ArcadeRLEnvironment:
         print(f"\n{'='*60}")
         print(f"🕹️  STARTING ARCADE ATTEMPT #{self.arcade_attempts}")
         print(f"{'='*60}")
-        print(f"Goal: Win {self.matches_to_win} matches in a row")
+        print(f"Goal: Beat all {self.matches_to_win} opponents (checkpoint system)")
         print(f"Current success rate: {self._get_success_rate():.1f}%")
         
         # Reset arcade state
         self.arcade_state = ArcadeState(
-            arcade_match_number=1,
+            current_opponent=1,
             total_wins=0,
-            total_losses=0,
-            is_final_match=False,
+            total_attempts=0,
+            is_final_opponent=False,
             arcade_active=True,
             arcade_completed=False
         )
     
     def _handle_match_completion(self):
-        """Handle transition between matches in arcade"""
+        """Handle transition to next opponent (checkpoint system)"""
         if not self.arcade_state.arcade_active:
             return
         
-        # Get match result
-        last_match = self.match_env.match_results[-1] if self.match_env.match_results else None
-        
-        if last_match and last_match['winner'] == 'PLAYER 1':
-            # Prepare for next match
-            if self.arcade_state.total_wins < self.matches_to_win - 1:
-                print(f"\n⏳ Waiting {self.match_transition_delay}s for next opponent...")
-                time.sleep(self.match_transition_delay)
-                
-                self.arcade_state.arcade_match_number += 1
-                self.arcade_state.is_final_match = (
-                    self.arcade_state.arcade_match_number == self.matches_to_win
-                )
-                
-                print(f"\n🎮 ARCADE: Starting Match {self.arcade_state.arcade_match_number}")
-                if self.arcade_state.is_final_match:
-                    print("   🔥 FINAL MATCH! Win this to complete the arcade!")
+        # With checkpoint system, transitions are handled in step() method
+        # This method is kept for compatibility but does minimal work
+        if self.arcade_state.current_opponent > 1:
+            print(f"\n⏳ Waiting {self.match_transition_delay}s for next opponent...")
+            time.sleep(self.match_transition_delay)
+            print(f"\n🎮 ARCADE: Facing Opponent {self.arcade_state.current_opponent}")
+            if self.arcade_state.is_final_opponent:
+                print("   🔥 FINAL OPPONENT! Beat this to complete arcade!")
     
     def _extend_state_with_arcade(self, match_state: np.ndarray) -> np.ndarray:
         """Add arcade context to state vector"""
         arcade_features = [
-            float(self.arcade_state.arcade_match_number),  # Current match (1-8)
-            float(self.arcade_state.total_wins),            # Wins so far
-            float(self.arcade_state.is_final_match)         # 1.0 if final match
+            float(self.arcade_state.current_opponent),     # Current opponent (1-8)
+            float(self.arcade_state.total_wins),           # Total opponents beaten
+            float(self.arcade_state.is_final_opponent)     # 1.0 if final opponent
         ]
         
         return np.concatenate([match_state, arcade_features]).astype(np.float32)
+    
+    def _trigger_auto_restart(self):
+        """Auto-restart sequence: send actions until health bars appear"""
+        print(f"   ⏳ Starting auto-restart sequence...")
+        
+        # Import here to avoid circular imports
+        from control.game_controller import BizHawkController
+        from detection.health_detector import HealthDetector
+        from detection.window_capture import WindowCapture
+        
+        try:
+            controller = BizHawkController()
+            capture = WindowCapture("Bloody Roar II (USA) [PlayStation] - BizHawk")
+            health_detector = HealthDetector()
+            
+            restart_actions = ['start', 'kick']
+            action_index = 0
+            attempts = 0
+            max_attempts = 30  # 30 seconds timeout
+            
+            while attempts < max_attempts:
+                # Send restart action
+                action = restart_actions[action_index % len(restart_actions)]
+                print(f"      Sending '{action}' action (attempt {attempts + 1})")
+                
+                try:
+                    if action == 'start':
+                        controller.send_action('start')
+                    else:
+                        controller.kick()
+                except:
+                    # Fallback to raw action
+                    controller.send_action(action)
+                
+                time.sleep(1.0)  # Wait between actions
+                
+                # Check for health bars
+                try:
+                    health_state = health_detector.detect(capture)
+                    if health_state and health_state.p1_health >= 99.0 and health_state.p2_health >= 99.0:
+                        print(f"   ✅ Health bars detected! Auto-restart successful after {attempts + 1} attempts")
+                        break
+                except:
+                    pass  # Continue trying
+                
+                attempts += 1
+                action_index += 1
+            
+            if attempts >= max_attempts:
+                print(f"   ⚠️  Auto-restart timeout after {max_attempts} attempts")
+                
+        except Exception as e:
+            print(f"   ❌ Auto-restart error: {e}")
+            print(f"   Continuing anyway...")
     
     def _record_arcade_result(self, success: bool):
         """Record arcade attempt results"""

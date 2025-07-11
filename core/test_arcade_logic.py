@@ -122,9 +122,9 @@ class ArcadeLogicTester:
     
     def print_state_info(self, label: str, state: np.ndarray):
         """Print current arcade state information"""
-        # Extract arcade context
-        arcade_match = int(state[19])
-        arcade_wins = int(state[20])
+        # Extract arcade context (checkpoint system)
+        current_opponent = int(state[19])
+        total_wins = int(state[20])
         is_final = bool(state[21])
         
         # Extract match context  
@@ -137,9 +137,9 @@ class ArcadeLogicTester:
         p2_health = state[4]
         
         print(f"  🎯 {label} STATE:")
-        print(f"      🕹️  Arcade: Match {arcade_match}/3, Wins: {arcade_wins}")
+        print(f"      🕹️  Arcade: Opponent {current_opponent}/3, Total wins: {total_wins}")
         if is_final:
-            print(f"          🔥 FINAL MATCH!")
+            print(f"          🔥 FINAL OPPONENT!")
         print(f"      🥊 Match: Round {current_round}, Score {p1_rounds}-{p2_rounds}")
         print(f"      💚 Health: P1={p1_health:.1f}% P2={p2_health:.1f}%")
     
@@ -154,15 +154,16 @@ class ArcadeLogicTester:
         # Match completion  
         if info.get('match_completed', False):
             winner = info.get('match_winner', 'Unknown')
-            arcade_record = f"{info.get('arcade_wins', 0)}-{info.get('arcade_losses', 0)}"
+            current_opponent = info.get('current_opponent', 0)
+            total_wins = info.get('arcade_wins', 0)
             print(f"    🎖️  MATCH COMPLETED! Winner: {winner}")
-            print(f"        Arcade record: {arcade_record}")
+            print(f"        vs Opponent {current_opponent}, Total wins: {total_wins}")
             
             # Check for arcade events
             if info.get('arcade_completed', False):
-                print(f"    🎉🎉 ARCADE COMPLETED! All matches won!")
-            elif not info.get('arcade_active', True):
-                print(f"    💀 ARCADE FAILED! Lost a match.")
+                print(f"    🎉🎉 ARCADE COMPLETED! Beat all opponents!")
+            elif winner != 'PLAYER 1':
+                print(f"    🔄 AUTO-RESTART: Will face Opponent {current_opponent} again")
                 
     def print_test_summary(self):
         """Print summary of all testing"""
