@@ -206,12 +206,11 @@ class RoundStateMonitor:
         p1_dead = state.p1_zero_frames >= self.zero_threshold
         p2_dead = state.p2_zero_frames >= self.zero_threshold
         
-        if p1_dead and p2_dead:
-            return RoundOutcome.DRAW  # Both clearly dead
-        elif p1_dead:
-            return RoundOutcome.PLAYER_LOSS  # P1 clearly dead
+        # One player always dies first - no simultaneous deaths
+        if p1_dead:
+            return RoundOutcome.PLAYER_LOSS  # P1 dead, P2 wins
         elif p2_dead:
-            return RoundOutcome.PLAYER_WIN   # P2 clearly dead
+            return RoundOutcome.PLAYER_WIN   # P2 dead, P1 wins
         
         return RoundOutcome.ONGOING  # Round continues until actual death
     
@@ -270,9 +269,7 @@ class RoundStateMonitor:
             return "PLAYER 1"
         elif self.current_state.round_outcome == RoundOutcome.PLAYER_LOSS:
             return "PLAYER 2"
-        elif self.current_state.round_outcome == RoundOutcome.DRAW:
-            return "DRAW"
-        # No timeout anymore - only actual deaths
+        # No draws possible - one player always dies first
         return None
     
     def analyze_winner_from_history(self) -> tuple[Optional[str], dict]:
@@ -318,8 +315,9 @@ class RoundStateMonitor:
                 winner = "PLAYER 2"
                 reason = f"Higher health before UI timeout: P2={p2_health_before:.1f}% > P1={p1_health_before:.1f}%"
             else:
-                winner = "DRAW"
-                reason = f"Equal health before UI timeout: P1={p1_health_before:.1f}% = P2={p2_health_before:.1f}%"
+                # If exactly equal health (very rare), P1 wins by default
+                winner = "PLAYER 1"
+                reason = f"Equal health before UI timeout: P1={p1_health_before:.1f}% = P2={p2_health_before:.1f}% (P1 wins by default)"
             
             analysis = {
                 "winner": winner,
@@ -396,8 +394,9 @@ class RoundStateMonitor:
             winner = "PLAYER 1"  # P2 had longer single streak
             reason = f"P2 had longer max streak ({p2_max_streak} vs {p1_max_streak})"
         else:
-            winner = "DRAW"
-            reason = "Equal zero time for both players"
+            # If exactly equal zero time (very rare), P1 wins by default
+            winner = "PLAYER 1"
+            reason = f"Equal zero time for both players ({p1_total_zero_frames} frames each, P1 wins by default)"
         
         # Get final health values
         final_p1_health = self.health_history[-1][1] if self.health_history else 0
