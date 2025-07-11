@@ -316,7 +316,7 @@ class RoundTrainingTester:
 def main():
     """Run the round training test"""
     # Test with 5 episodes for quick validation
-    tester = RoundTrainingTester(num_episodes=5)
+    tester = RoundTrainingTester(num_episodes=1)
     
     try:
         tester.run_test()

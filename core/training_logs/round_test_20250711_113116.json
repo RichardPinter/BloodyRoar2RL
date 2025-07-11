@@ -1,0 +1,820 @@
+{
+  "summary": {
+    "num_episodes": 5,
+    "avg_reward": -3.47,
+    "avg_length": 13.8,
+    "win_rate": 0.0,
+    "loss_rate": 1.0,
+    "timeout_rate": 0.0,
+    "action_distribution": {
+      "punch": 44,
+      "special": 6,
+      "squat": 2,
+      "throw": 2,
+      "jump": 1,
+      "forward": 9,
+      "block": 1,
+      "back": 3,
+      "transform": 1
+    }
+  },
+  "episodes": [
+    {
+      "episode": 0,
+      "reward": -22.575000000000003,
+      "length": 11,
+      "outcome": "loss",
+      "initial_health": {
+        "p1": 87.25,
+        "p2": 99.75
+      },
+      "final_health": {
+        "p1": 0.0,
+        "p2": 5.0
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "punch",
+          "reward": 1.2500000000000018,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": -87.25,
+          "p2_health_change": -99.75,
+          "done": false
+        },
+        {
+          "step": 1,
+          "action": "special",
+          "reward": 0.0,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 2,
+          "action": "squat",
+          "reward": 7.2,
+          "p1_health": 72.0,
+          "p2_health": 0.0,
+          "p1_health_change": 72.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 3,
+          "action": "punch",
+          "reward": -11.175,
+          "p1_health": 58.5,
+          "p2_health": 99.75,
+          "p1_health_change": -13.5,
+          "p2_health_change": 99.75,
+          "done": false
+        },
+        {
+          "step": 4,
+          "action": "throw",
+          "reward": -5.8500000000000005,
+          "p1_health": 0.0,
+          "p2_health": 99.75,
+          "p1_health_change": -58.5,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 5,
+          "action": "special",
+          "reward": -1.625,
+          "p1_health": 41.0,
+          "p2_health": 99.75,
+          "p1_health_change": 41.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 6,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 41.0,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 7,
+          "action": "punch",
+          "reward": -0.275,
+          "p1_health": 38.25,
+          "p2_health": 99.75,
+          "p1_health_change": -2.75,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 8,
+          "action": "punch",
+          "reward": -1.05,
+          "p1_health": 27.75,
+          "p2_health": 99.75,
+          "p1_health_change": -10.5,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 9,
+          "action": "special",
+          "reward": -3.5500000000000007,
+          "p1_health": 0.0,
+          "p2_health": 21.75,
+          "p1_health_change": -27.75,
+          "p2_health_change": -78.0,
+          "done": false
+        },
+        {
+          "step": 10,
+          "action": "punch",
+          "reward": -7.5,
+          "p1_health": 0.0,
+          "p2_health": 5.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -16.75,
+          "done": true
+        }
+      ]
+    },
+    {
+      "episode": 1,
+      "reward": 0.0,
+      "length": 1,
+      "outcome": "loss",
+      "initial_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "final_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "squat",
+          "reward": 0.0,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": true
+        }
+      ]
+    },
+    {
+      "episode": 2,
+      "reward": 0.0,
+      "length": 1,
+      "outcome": "loss",
+      "initial_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "final_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "jump",
+          "reward": 0.0,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": true
+        }
+      ]
+    },
+    {
+      "episode": 3,
+      "reward": 5.225000000000001,
+      "length": 55,
+      "outcome": "loss",
+      "initial_health": {
+        "p1": 5.25,
+        "p2": 57.5
+      },
+      "final_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 1,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 2,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 3,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 4,
+          "action": "block",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 5,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 6,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 7,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 8,
+          "action": "special",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 9,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 10,
+          "action": "back",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 11,
+          "action": "throw",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 12,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 13,
+          "action": "back",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 14,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 15,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 16,
+          "action": "back",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 17,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 5.25,
+          "p2_health": 57.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 18,
+          "action": "transform",
+          "reward": 5.075,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 93.0,
+          "p2_health_change": 42.25,
+          "done": false
+        },
+        {
+          "step": 19,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 20,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 21,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 22,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 23,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 24,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 25,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 26,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 27,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 28,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 29,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 30,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 31,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 32,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 33,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 34,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 35,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 36,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 37,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 38,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 39,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 40,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 41,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 42,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 43,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 44,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 45,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 46,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 47,
+          "action": "forward",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 48,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 49,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 50,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 98.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 51,
+          "action": "punch",
+          "reward": -2.8000000000000003,
+          "p1_health": 70.25,
+          "p2_health": 99.75,
+          "p1_health_change": -28.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 52,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 70.25,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 53,
+          "action": "special",
+          "reward": 2.950000000000001,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": -70.25,
+          "p2_health_change": -99.75,
+          "done": false
+        },
+        {
+          "step": 54,
+          "action": "special",
+          "reward": 0.0,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": true
+        }
+      ]
+    },
+    {
+      "episode": 4,
+      "reward": 0.0,
+      "length": 1,
+      "outcome": "loss",
+      "initial_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "final_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": true
+        }
+      ]
+    }
+  ],
+  "diagnostic_issues": [
+    "Episode 3: Very long episode (31 steps)",
+    "Episode 3: Very long episode (32 steps)",
+    "Episode 3: Very long episode (33 steps)",
+    "Episode 3: Very long episode (34 steps)",
+    "Episode 3: Very long episode (35 steps)",
+    "Episode 3: Very long episode (36 steps)",
+    "Episode 3: Very long episode (37 steps)",
+    "Episode 3: Very long episode (38 steps)",
+    "Episode 3: Very long episode (39 steps)",
+    "Episode 3: Very long episode (40 steps)",
+    "Episode 3: Very long episode (41 steps)",
+    "Episode 3: Very long episode (42 steps)",
+    "Episode 3: Very long episode (43 steps)",
+    "Episode 3: Very long episode (44 steps)",
+    "Episode 3: Very long episode (45 steps)",
+    "Episode 3: Very long episode (46 steps)",
+    "Episode 3: Very long episode (47 steps)",
+    "Episode 3: Very long episode (48 steps)",
+    "Episode 3: Very long episode (49 steps)",
+    "Episode 3: Very long episode (50 steps)",
+    "Episode 3: Very long episode (51 steps)",
+    "Episode 3: Very long episode (52 steps)",
+    "Episode 3: Very long episode (53 steps)",
+    "Episode 3: Very long episode (54 steps)",
+    "Episode 3: Very long episode (55 steps)"
+  ]
+}

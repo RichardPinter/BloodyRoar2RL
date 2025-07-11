@@ -81,8 +81,8 @@ class SlowRLEnvironment:
         
         # Actions for the environment
         self.actions = [
-            'forward', 
-            'back', 
+            'left', 
+            'right', 
             'jump', 
             'squat',
             'transform', 
