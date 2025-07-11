@@ -218,9 +218,8 @@ class ArcadeRLEnvironment:
             restart_actions = ['start', 'kick']
             action_index = 0
             attempts = 0
-            max_attempts = 30  # 30 seconds timeout
             
-            while attempts < max_attempts:
+            while True:  # Keep trying until health bars appear
                 # Send restart action
                 action = restart_actions[action_index % len(restart_actions)]
                 print(f"      Sending '{action}' action (attempt {attempts + 1})")
@@ -247,9 +246,6 @@ class ArcadeRLEnvironment:
                 
                 attempts += 1
                 action_index += 1
-            
-            if attempts >= max_attempts:
-                print(f"   ⚠️  Auto-restart timeout after {max_attempts} attempts")
                 
         except Exception as e:
             print(f"   ❌ Auto-restart error: {e}")
