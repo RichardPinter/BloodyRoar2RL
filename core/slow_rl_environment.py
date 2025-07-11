@@ -165,6 +165,10 @@ class SlowRLEnvironment:
         # Check if episode is done
         done = self._is_episode_done()
         
+        # If episode is done, show winner analysis
+        if done and self.round_monitor.current_state.round_outcome == RoundOutcome.TIMEOUT:
+            self.round_monitor.print_winner_analysis()
+        
         # Create info dict
         info = {
             'episode_step': self.episode_step,
@@ -208,6 +212,11 @@ class SlowRLEnvironment:
                 winner = self.round_monitor.get_winner()
                 print(f"  🏁 Round ended during collection! Winner: {winner}")
                 print(f"  📊 Collected {len(observations)}/{self.observation_window} samples before round end")
+                
+                # Show detailed winner analysis if it was determined by health history
+                if self.round_monitor.current_state.round_outcome == RoundOutcome.TIMEOUT:
+                    self.round_monitor.print_winner_analysis()
+                
                 break
         
         # Store observations for next iteration

@@ -94,6 +94,9 @@ class RoundStateMonitor:
         self.frame_count = 0
         self.start_time = time.time()
         
+        # Health history tracking for robust winner detection
+        self.health_history = []  # List of (timestamp, p1_health, p2_health, frame_count)
+        
         # Win detection parameters
         self.zero_threshold = zero_threshold  # Configurable frames of 0% health needed for death
         self.max_round_time = 120.0  # 2 minutes max
@@ -126,6 +129,14 @@ class RoundStateMonitor:
                 state.p1_health = health_state.p1_health
                 state.p2_health = health_state.p2_health
                 state.health_detection_working = True
+                
+                # Record health history for winner analysis
+                self.health_history.append((
+                    current_time,
+                    state.p1_health,
+                    state.p2_health,
+                    self.frame_count
+                ))
         
         # Get fighter positions
         if self.fighter_available:
@@ -190,22 +201,23 @@ class RoundStateMonitor:
             state.p2_zero_frames = 0
     
     def _check_round_outcome(self, state: GameState) -> RoundOutcome:
-        """Check if round should end based on win conditions"""
-        # Check timeout
+        """Check if round should end based on timeout (winner determined later by history analysis)"""
+        # Check timeout - primary way rounds end now
         elapsed = time.time() - self.start_time
         if elapsed > self.max_round_time:
             return RoundOutcome.TIMEOUT
         
-        # Check win conditions using consecutive zero frames
+        # Keep the old immediate detection as backup for very clear deaths
+        # (but we'll rely on history analysis for the final winner)
         p1_dead = state.p1_zero_frames >= self.zero_threshold
         p2_dead = state.p2_zero_frames >= self.zero_threshold
         
         if p1_dead and p2_dead:
-            return RoundOutcome.DRAW
+            return RoundOutcome.DRAW  # Both clearly dead
         elif p1_dead:
-            return RoundOutcome.PLAYER_LOSS  # P1 lost
+            return RoundOutcome.PLAYER_LOSS  # P1 clearly dead
         elif p2_dead:
-            return RoundOutcome.PLAYER_WIN   # P1 won
+            return RoundOutcome.PLAYER_WIN   # P2 clearly dead
         
         return RoundOutcome.ONGOING
     
@@ -251,6 +263,7 @@ class RoundStateMonitor:
         self.frame_count = 0
         self.start_time = time.time()
         self.current_state = GameState()
+        self.health_history = []  # Clear health history for new round
         print("🔄 Round state monitor reset")
     
     def is_round_finished(self) -> bool:
@@ -265,7 +278,113 @@ class RoundStateMonitor:
             return "PLAYER 2"
         elif self.current_state.round_outcome == RoundOutcome.DRAW:
             return "DRAW"
+        elif self.current_state.round_outcome == RoundOutcome.TIMEOUT:
+            # Use health history analysis to determine winner
+            winner, analysis = self.analyze_winner_from_history()
+            return winner
         return None
+    
+    def analyze_winner_from_history(self) -> tuple[Optional[str], dict]:
+        """
+        Analyze health history to find winner based on longest zero streak
+        
+        Returns:
+            (winner, analysis_details)
+        """
+        if not self.health_history:
+            return None, {"error": "No health history available"}
+        
+        # Calculate zero streaks for both players
+        p1_zero_streaks = []
+        p2_zero_streaks = []
+        
+        current_p1_streak = 0
+        current_p2_streak = 0
+        
+        for timestamp, p1_health, p2_health, frame_count in self.health_history:
+            # Track P1 zero streaks
+            if p1_health <= 0.0:
+                current_p1_streak += 1
+            else:
+                if current_p1_streak > 0:
+                    p1_zero_streaks.append(current_p1_streak)
+                current_p1_streak = 0
+            
+            # Track P2 zero streaks
+            if p2_health <= 0.0:
+                current_p2_streak += 1
+            else:
+                if current_p2_streak > 0:
+                    p2_zero_streaks.append(current_p2_streak)
+                current_p2_streak = 0
+        
+        # Add final streaks if they're ongoing
+        if current_p1_streak > 0:
+            p1_zero_streaks.append(current_p1_streak)
+        if current_p2_streak > 0:
+            p2_zero_streaks.append(current_p2_streak)
+        
+        # Calculate totals
+        p1_total_zero_frames = sum(p1_zero_streaks)
+        p2_total_zero_frames = sum(p2_zero_streaks)
+        p1_max_streak = max(p1_zero_streaks) if p1_zero_streaks else 0
+        p2_max_streak = max(p2_zero_streaks) if p2_zero_streaks else 0
+        
+        # Determine winner based on total zero time (more zero time = loser)
+        winner = None
+        reason = ""
+        
+        if p1_total_zero_frames > p2_total_zero_frames:
+            winner = "PLAYER 2"  # P1 had more zero time, so P2 wins
+            reason = f"P1 had {p1_total_zero_frames} total zero frames vs P2's {p2_total_zero_frames}"
+        elif p2_total_zero_frames > p1_total_zero_frames:
+            winner = "PLAYER 1"  # P2 had more zero time, so P1 wins  
+            reason = f"P2 had {p2_total_zero_frames} total zero frames vs P1's {p1_total_zero_frames}"
+        elif p1_max_streak > p2_max_streak:
+            winner = "PLAYER 2"  # P1 had longer single streak
+            reason = f"P1 had longer max streak ({p1_max_streak} vs {p2_max_streak})"
+        elif p2_max_streak > p1_max_streak:
+            winner = "PLAYER 1"  # P2 had longer single streak
+            reason = f"P2 had longer max streak ({p2_max_streak} vs {p1_max_streak})"
+        else:
+            winner = "DRAW"
+            reason = "Equal zero time for both players"
+        
+        # Get final health values
+        final_p1_health = self.health_history[-1][1] if self.health_history else 0
+        final_p2_health = self.health_history[-1][2] if self.health_history else 0
+        
+        analysis = {
+            "winner": winner,
+            "reason": reason,
+            "p1_total_zero_frames": p1_total_zero_frames,
+            "p2_total_zero_frames": p2_total_zero_frames,
+            "p1_max_zero_streak": p1_max_streak,
+            "p2_max_zero_streak": p2_max_streak,
+            "p1_zero_streaks": p1_zero_streaks,
+            "p2_zero_streaks": p2_zero_streaks,
+            "final_p1_health": final_p1_health,
+            "final_p2_health": final_p2_health,
+            "total_frames_analyzed": len(self.health_history)
+        }
+        
+        return winner, analysis
+    
+    def print_winner_analysis(self):
+        """Print detailed winner analysis based on health history"""
+        if self.current_state.round_outcome != RoundOutcome.TIMEOUT:
+            print(f"Round ended with: {self.current_state.round_outcome.value}")
+            return
+        
+        winner, analysis = self.analyze_winner_from_history()
+        
+        print(f"\n🔍 WINNER ANALYSIS (Health History):")
+        print(f"   Winner: {winner}")
+        print(f"   Reason: {analysis['reason']}")
+        print(f"   P1 zero streaks: {analysis['p1_zero_streaks']} (total: {analysis['p1_total_zero_frames']} frames)")
+        print(f"   P2 zero streaks: {analysis['p2_zero_streaks']} (total: {analysis['p2_total_zero_frames']} frames)")
+        print(f"   Final health: P1={analysis['final_p1_health']:.1f}% P2={analysis['final_p2_health']:.1f}%")
+        print(f"   Frames analyzed: {analysis['total_frames_analyzed']}")
     
     def wait_for_round_ready(self, timeout: float = 30.0) -> bool:
         """
