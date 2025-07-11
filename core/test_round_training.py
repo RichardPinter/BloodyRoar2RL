@@ -278,6 +278,21 @@ class RoundTrainingTester:
             
     def save_results(self):
         """Save detailed results to file"""
+        
+        # Helper function to convert numpy types to python types for JSON serialization
+        def convert_numpy_types(obj):
+            if isinstance(obj, np.float32):
+                return float(obj)
+            elif isinstance(obj, np.int32):
+                return int(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            elif isinstance(obj, dict):
+                return {k: convert_numpy_types(v) for k, v in obj.items()}
+            return obj
+        
         results = {
             'summary': {
                 'num_episodes': self.num_episodes,
@@ -288,7 +303,7 @@ class RoundTrainingTester:
                 'timeout_rate': self.timeout_count / self.num_episodes,
                 'action_distribution': dict(self.action_counts)
             },
-            'episodes': self.step_logs,
+            'episodes': convert_numpy_types(self.step_logs),
             'diagnostic_issues': self.diagnostic_issues
         }
         
