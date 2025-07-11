@@ -203,8 +203,8 @@ class SlowRLEnvironment:
             print(f"  Sample {i+1}/{self.observation_window}: P1={obs.p1_health:.1f}% P2={obs.p2_health:.1f}% "
                   f"Pos=({obs.p1_position}, {obs.p2_position})")
             
-            # Check if round finished during collection (early termination)
-            if self.round_monitor.is_round_finished():
+            # Only check for round end after we have minimum required observations (≥2)
+            if len(observations) >= 2 and self.round_monitor.is_round_finished():
                 winner = self.round_monitor.get_winner()
                 print(f"  🏁 Round ended during collection! Winner: {winner}")
                 print(f"  📊 Collected {len(observations)}/{self.observation_window} samples before round end")
@@ -380,7 +380,8 @@ def test_slow_environment():
     print("Testing new death detection timing:")
     print("- Observation window: 8 seconds")
     print("- Death detection: 7 frames (7 seconds) of 0% health (95% of window)")
-    print("- Expected: Round should end near end of collection if health reaches 0")
+    print("- Minimum observations: 2 (always collected before checking round end)")
+    print("- Expected: Round should end after ≥2 samples if health reaches 0")
     print("=" * 60)
     
     env = SlowRLEnvironment()
@@ -413,6 +414,7 @@ def test_slow_environment():
             if done:
                 if step_duration < 7.5:
                     print(f"✅ Round ended before full collection ({step_duration:.1f}s < 7.5s) - death detection working!")
+                    print(f"    (Minimum 2 samples always collected for proper RL state calculation)")
                 else:
                     print(f"⚠️ Round took near full time ({step_duration:.1f}s) - may be timeout/step limit")
                 break
