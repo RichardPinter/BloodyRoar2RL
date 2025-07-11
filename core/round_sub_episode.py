@@ -212,6 +212,22 @@ class RoundStateMonitor:
         elif p2_dead:
             return RoundOutcome.PLAYER_WIN   # P2 dead, P1 wins
         
+        # Check if we should use winner analysis for complex death scenarios
+        # (when health has gone to zero multiple times but current streak < threshold)
+        if len(self.health_history) >= 20:  # Only after sufficient data
+            total_p1_zeros = sum(1 for h in self.health_history if h['p1_health'] <= 0.0)
+            total_p2_zeros = sum(1 for h in self.health_history if h['p2_health'] <= 0.0)
+            
+            # If either player has significant zero frames, run winner analysis
+            if total_p1_zeros >= self.zero_threshold or total_p2_zeros >= self.zero_threshold:
+                winner, analysis = self.analyze_winner_from_history()
+                if winner == "PLAYER 1":
+                    print(f"🏆 Round ended via winner analysis: {winner}")
+                    return RoundOutcome.PLAYER_WIN
+                elif winner == "PLAYER 2":
+                    print(f"🏆 Round ended via winner analysis: {winner}")
+                    return RoundOutcome.PLAYER_LOSS
+        
         return RoundOutcome.ONGOING  # Round continues until actual death
     
     def print_state(self, state: GameState, show_positions: bool = True):

@@ -201,6 +201,12 @@ class MatchManager:
         winner = self.current_round_monitor.get_winner()
         round_duration = time.time() - self.current_round_monitor.start_time
         
+        # Debug logging for winner detection
+        print(f"🔍 Match Manager - Round Completion Debug:")
+        print(f"   Round outcome: {final_state.round_outcome}")
+        print(f"   Winner from monitor: {winner}")
+        print(f"   Final health: P1={final_state.p1_health:.1f}% P2={final_state.p2_health:.1f}%")
+        
         # Create round result
         round_result = RoundResult(
             round_number=self.current_round_number,
@@ -216,8 +222,12 @@ class MatchManager:
         
         if winner == "PLAYER 1":
             self.stats.p1_rounds_won += 1
+            print(f"📊 P1 wins round! New score: P1={self.stats.p1_rounds_won} P2={self.stats.p2_rounds_won}")
         elif winner == "PLAYER 2":
             self.stats.p2_rounds_won += 1
+            print(f"📊 P2 wins round! New score: P1={self.stats.p1_rounds_won} P2={self.stats.p2_rounds_won}")
+        else:
+            print(f"⚠️ No winner detected for round {self.current_round_number}!")
         
         print(f"\n🏁 Round {self.current_round_number} finished!")
         print(f"   Winner: {winner}")
