@@ -88,7 +88,7 @@ class MatchManager:
         
         # Match state
         self.stats = None
-        self.current_round_monitor: Optional[RoundStateMonitor] = None
+        # Round monitoring is handled by SlowRLEnvironment, not here
         self.current_round_number = 0
         self.is_active = False
         
@@ -131,9 +131,7 @@ class MatchManager:
             print("❌ Match is already finished")
             return False
         
-        # Clean up previous round
-        if self.current_round_monitor:
-            self.current_round_monitor.close()
+        # Round monitoring is handled by SlowRLEnvironment
         
         # Increment round number
         self.current_round_number += 1
@@ -147,14 +145,9 @@ class MatchManager:
             if not self.wait_for_round_ready():
                 print("❌ Failed to detect health bars - starting round anyway")
         
-        try:
-            self.current_round_monitor = RoundStateMonitor(self.window_title, zero_threshold=zero_threshold)
-            self.current_round_monitor.reset()
-            print(f"✅ Round {self.current_round_number} ready")
-            return True
-        except Exception as e:
-            print(f"❌ Failed to start round: {e}")
-            return False
+        # Note: Round monitoring will be done by SlowRLEnvironment's round_monitor
+        print(f"✅ Round {self.current_round_number} ready")
+        return True
     
     def wait_for_round_ready(self, timeout: float = 30.0) -> bool:
         """
@@ -179,32 +172,26 @@ class MatchManager:
         Returns:
             RoundResult if round finished, None if still ongoing
         """
-        if not self.current_round_monitor:
-            print("❌ No active round to monitor")
-            return None
-        
-        # Get current state
-        state = self.current_round_monitor.get_current_state()
-        
-        # Print state (every 10th frame to reduce spam)
-        if state.frame_count % 10 == 0:
-            self.current_round_monitor.print_state(state)
-        
-        # Check if round is finished
-        if self.current_round_monitor.is_round_finished():
-            return self._complete_current_round(state)
-        
+        # This method is no longer used since round monitoring
+        # is handled by SlowRLEnvironment
+        print("⚠️ monitor_current_round called but round monitoring is handled by SlowRLEnvironment")
         return None
     
     def _complete_current_round(self, final_state: GameState) -> RoundResult:
         """Complete the current round and update match stats"""
-        winner = self.current_round_monitor.get_winner()
-        round_duration = time.time() - self.current_round_monitor.start_time
+        # Get winner from the final state's round outcome
+        winner = None
+        if final_state.round_outcome == RoundOutcome.PLAYER_WIN:
+            winner = "PLAYER 1"
+        elif final_state.round_outcome == RoundOutcome.PLAYER_LOSS:
+            winner = "PLAYER 2"
+        
+        round_duration = time.time() - self.stats.start_time  # Use match start time as approximation
         
         # Debug logging for winner detection
         print(f"🔍 Match Manager - Round Completion Debug:")
         print(f"   Round outcome: {final_state.round_outcome}")
-        print(f"   Winner from monitor: {winner}")
+        print(f"   Winner determined: {winner}")
         print(f"   Final health: P1={final_state.p1_health:.1f}% P2={final_state.p2_health:.1f}%")
         
         # Create round result
@@ -318,9 +305,7 @@ class MatchManager:
     
     def close(self):
         """Clean up resources"""
-        if self.current_round_monitor:
-            self.current_round_monitor.close()
-            self.current_round_monitor = None
+        # Round monitoring cleanup is handled by SlowRLEnvironment
         
         if self.is_active:
             self.is_active = False

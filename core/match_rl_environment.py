@@ -211,8 +211,8 @@ class MatchRLEnvironment:
     
     def _complete_current_round(self) -> Optional[RoundResult]:
         """Complete the current round using MatchManager"""
-        # Get final state from round monitor
-        final_state = self.match_manager.current_round_monitor.current_state
+        # Get final state from the ACTUAL round monitor (in SlowRLEnvironment)
+        final_state = self.current_round_env.round_monitor.current_state
         
         # Let MatchManager handle round completion
         return self.match_manager._complete_current_round(final_state)
