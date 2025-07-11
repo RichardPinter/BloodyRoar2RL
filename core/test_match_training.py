@@ -66,9 +66,15 @@ class MatchTrainingTester:
         
         start_time = time.time()
         
+        match_completed = False
         for episode in range(self.num_episodes):
-            self.run_episode(episode)
+            match_completed = self.run_episode(episode)
             self.print_episode_summary(episode)
+            
+            # Stop if match is completed
+            if match_completed:
+                print(f"\n🏁 MATCH COMPLETED! Stopping after {episode + 1} episodes")
+                break
             
             # Update policy every 2 episodes if we have enough data
             if len(self.agent.buffer.states) >= 20:
@@ -83,8 +89,12 @@ class MatchTrainingTester:
         total_time = time.time() - start_time
         print(f"\nTotal test time: {total_time:.1f} seconds")
         
-    def run_episode(self, episode_num: int):
-        """Run a single episode (round) with detailed logging"""
+    def run_episode(self, episode_num: int) -> bool:
+        """Run a single episode (round) with detailed logging
+        
+        Returns:
+            True if match was completed during this episode, False otherwise
+        """
         print(f"\n{'='*60}")
         print(f"📺 EPISODE {episode_num + 1}/{self.num_episodes}")
         print(f"{'='*60}")
@@ -106,6 +116,7 @@ class MatchTrainingTester:
         episode_reward = 0
         episode_steps = 0
         step_data = []
+        match_completed_this_episode = False
         
         # Get initial health for tracking
         initial_p1_health = state[1]  # p1_health_end
@@ -152,6 +163,7 @@ class MatchTrainingTester:
                     self.matches_completed += 1
                     self.match_winners.append(info['match_winner'])
                     self.rounds_per_match.append(info['total_rounds_played'])
+                    match_completed_this_episode = True
             
             # Store experience
             self.agent.buffer.add(state, action, reward, next_state, done, log_prob, value)
@@ -216,6 +228,9 @@ class MatchTrainingTester:
             'steps': step_data
         }
         self.step_logs.append(episode_log)
+        
+        # Return whether match was completed during this episode
+        return match_completed_this_episode
         
     def print_episode_summary(self, episode_num: int):
         """Print summary after each episode"""
