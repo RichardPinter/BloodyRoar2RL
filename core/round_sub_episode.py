@@ -201,14 +201,8 @@ class RoundStateMonitor:
             state.p2_zero_frames = 0
     
     def _check_round_outcome(self, state: GameState) -> RoundOutcome:
-        """Check if round should end based on timeout (winner determined later by history analysis)"""
-        # Check timeout - primary way rounds end now
-        elapsed = time.time() - self.start_time
-        if elapsed > self.max_round_time:
-            return RoundOutcome.TIMEOUT
-        
-        # Keep the old immediate detection as backup for very clear deaths
-        # (but we'll rely on history analysis for the final winner)
+        """Check if round should end based on actual player deaths only"""
+        # Only check for actual deaths - no artificial time limits
         p1_dead = state.p1_zero_frames >= self.zero_threshold
         p2_dead = state.p2_zero_frames >= self.zero_threshold
         
@@ -219,7 +213,7 @@ class RoundStateMonitor:
         elif p2_dead:
             return RoundOutcome.PLAYER_WIN   # P2 clearly dead
         
-        return RoundOutcome.ONGOING
+        return RoundOutcome.ONGOING  # Round continues until actual death
     
     def print_state(self, state: GameState, show_positions: bool = True):
         """Print current state in a readable format"""
@@ -278,10 +272,7 @@ class RoundStateMonitor:
             return "PLAYER 2"
         elif self.current_state.round_outcome == RoundOutcome.DRAW:
             return "DRAW"
-        elif self.current_state.round_outcome == RoundOutcome.TIMEOUT:
-            # Use health history analysis to determine winner
-            winner, analysis = self.analyze_winner_from_history()
-            return winner
+        # No timeout anymore - only actual deaths
         return None
     
     def analyze_winner_from_history(self) -> tuple[Optional[str], dict]:
@@ -431,8 +422,9 @@ class RoundStateMonitor:
     
     def print_winner_analysis(self):
         """Print detailed winner analysis based on health history"""
-        if self.current_state.round_outcome != RoundOutcome.TIMEOUT:
-            print(f"Round ended with: {self.current_state.round_outcome.value}")
+        # Only analyze if round actually ended (not used anymore since no timeouts)
+        if self.current_state.round_outcome == RoundOutcome.ONGOING:
+            print("Round is still ongoing")
             return
         
         winner, analysis = self.analyze_winner_from_history()

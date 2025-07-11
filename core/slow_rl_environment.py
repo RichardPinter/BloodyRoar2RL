@@ -165,8 +165,8 @@ class SlowRLEnvironment:
         # Check if episode is done
         done = self._is_episode_done()
         
-        # If episode is done, show winner analysis
-        if done and self.round_monitor.current_state.round_outcome == RoundOutcome.TIMEOUT:
+        # If episode is done, show winner analysis (for actual deaths)
+        if done:
             self.round_monitor.print_winner_analysis()
         
         # Create info dict
@@ -213,9 +213,8 @@ class SlowRLEnvironment:
                 print(f"  🏁 Round ended during collection! Winner: {winner}")
                 print(f"  📊 Collected {len(observations)}/{self.observation_window} samples before round end")
                 
-                # Show detailed winner analysis if it was determined by health history
-                if self.round_monitor.current_state.round_outcome == RoundOutcome.TIMEOUT:
-                    self.round_monitor.print_winner_analysis()
+                # Show detailed winner analysis for any round end
+                self.round_monitor.print_winner_analysis()
                 
                 break
         
@@ -358,14 +357,11 @@ class SlowRLEnvironment:
     
     def _is_episode_done(self) -> bool:
         """Check if episode should end"""
-        # End if round is finished
+        # Only end if round is finished (actual player death)
         if self.round_monitor.is_round_finished():
             return True
         
-        # End if too many steps (prevent infinite episodes)
-        if self.episode_step >= 50:  # 50 * 4 seconds = 200 seconds max
-            return True
-        
+        # No artificial step or time limits - round continues until actual death
         return False
     
     def get_observation_space_size(self) -> int:
