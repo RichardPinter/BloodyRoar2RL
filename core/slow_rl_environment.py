@@ -66,8 +66,17 @@ class SlowRLEnvironment:
     def __init__(self):
         print("Initializing Slow RL Environment...")
         
+        # Timing configuration
+        self.sampling_interval = 1.0  # 1 second between samples
+        self.observation_window = 8   # 8 samples per action
+        self.death_detection_ratio = 0.95  # 95% of observation window for death detection
+        
+        # Calculate death detection threshold based on observation window
+        # Use 95% of observation window so round can end near end of collection
+        death_detection_frames = max(2, int(self.observation_window * self.death_detection_ratio))
+        
         # Initialize components
-        self.round_monitor = RoundStateMonitor()
+        self.round_monitor = RoundStateMonitor(zero_threshold=death_detection_frames)
         self.controller = BizHawkController()
         
         # Actions for the environment
@@ -85,10 +94,6 @@ class SlowRLEnvironment:
         ]
         self.action_space_size = len(self.actions)
         
-        # Timing configuration
-        self.sampling_interval = 1.0  # 1 second between samples
-        self.observation_window = 8   # 4 samples per action
-        
         # State tracking
         self.current_observations: List[SlowObservation] = []
         self.episode_step = 0
@@ -98,6 +103,8 @@ class SlowRLEnvironment:
         print(f"Actions: {self.actions}")
         print(f"Sampling: Every {self.sampling_interval}s")
         print(f"Decision: Every {self.observation_window}s")
+        print(f"Death detection: {death_detection_frames} frames ({death_detection_frames}s) of 0% health")
+        print(f"Death detection ratio: {self.death_detection_ratio*100:.0f}% of observation window")
     
     def reset(self) -> np.ndarray:
         """Reset environment for new episode"""
@@ -107,12 +114,19 @@ class SlowRLEnvironment:
         self.round_monitor.reset()
         time.sleep(0.5)  # Let game stabilize
         
+        # Wait for round to be ready (both players at full health)
+        print("⏳ Waiting for round to start...")
+        if self.round_monitor.wait_for_round_ready(timeout=30.0):
+            print("🎬 Round started! Beginning training...")
+        else:
+            print("⚠️  Round not detected, starting anyway...")
+        
         # Clear observation history
         self.current_observations = []
         self.episode_step = 0
         self.total_reward = 0
         
-        # Collect initial 4-second observation window
+        # Collect initial observation window
         initial_state = self._collect_observation_window()
         
         print(f"Reset complete. Initial P1: {initial_state.p1_health_start:.1f}% P2: {initial_state.p2_health_start:.1f}%")
@@ -188,6 +202,13 @@ class SlowRLEnvironment:
             
             print(f"  Sample {i+1}/{self.observation_window}: P1={obs.p1_health:.1f}% P2={obs.p2_health:.1f}% "
                   f"Pos=({obs.p1_position}, {obs.p2_position})")
+            
+            # Check if round finished during collection (early termination)
+            if self.round_monitor.is_round_finished():
+                winner = self.round_monitor.get_winner()
+                print(f"  🏁 Round ended during collection! Winner: {winner}")
+                print(f"  📊 Collected {len(observations)}/{self.observation_window} samples before round end")
+                break
         
         # Store observations for next iteration
         self.current_observations = observations
@@ -277,7 +298,7 @@ class SlowRLEnvironment:
     
     def _get_latest_slow_state(self) -> Optional[SlowState]:
         """Get SlowState from current observations"""
-        if len(self.current_observations) != 4:
+        if len(self.current_observations) < 2:
             return None
         return self._create_slow_state(self.current_observations)
     
@@ -356,6 +377,11 @@ def test_slow_environment():
     """Test the slow RL environment"""
     print("🧪 Testing Slow RL Environment")
     print("=" * 60)
+    print("Testing new death detection timing:")
+    print("- Observation window: 8 seconds")
+    print("- Death detection: 7 frames (7 seconds) of 0% health (95% of window)")
+    print("- Expected: Round should end near end of collection if health reaches 0")
+    print("=" * 60)
     
     env = SlowRLEnvironment()
     
@@ -372,17 +398,23 @@ def test_slow_environment():
             # Random action
             action = np.random.randint(0, env.get_action_space_size())
             
-            # Take step (this will take ~4 seconds)
+            # Take step (this will take up to 8 seconds, but may end early)
+            step_start = time.time()
             obs, reward, done, info = env.step(action)
+            step_duration = time.time() - step_start
             
             print(f"\nStep Results:")
             print(f"  Action: {action} ({env.actions[action]})")
             print(f"  Reward: {reward:.3f}")
             print(f"  Done: {done}")
+            print(f"  Step duration: {step_duration:.1f}s (expected: ≤8s)")
             print(f"  Info: {info}")
             
             if done:
-                print("Episode finished!")
+                if step_duration < 7.5:
+                    print(f"✅ Round ended before full collection ({step_duration:.1f}s < 7.5s) - death detection working!")
+                else:
+                    print(f"⚠️ Round took near full time ({step_duration:.1f}s) - may be timeout/step limit")
                 break
         
         print(f"\nObservation space size: {env.get_observation_space_size()}")

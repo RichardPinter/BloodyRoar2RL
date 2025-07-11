@@ -67,7 +67,8 @@ class RoundStateMonitor:
     This class focuses purely on state observation, no actions or rewards.
     """
     
-    def __init__(self, window_title: str = "Bloody Roar II (USA) [PlayStation] - BizHawk"):
+    def __init__(self, window_title: str = "Bloody Roar II (USA) [PlayStation] - BizHawk", 
+                 zero_threshold: int = 10):
         self.window_title = window_title
         
         # Initialize detection systems
@@ -94,12 +95,13 @@ class RoundStateMonitor:
         self.start_time = time.time()
         
         # Win detection parameters
-        self.zero_threshold = 10  # Frames of 0% health needed for death
+        self.zero_threshold = zero_threshold  # Configurable frames of 0% health needed for death
         self.max_round_time = 120.0  # 2 minutes max
         
         print(f"RoundStateMonitor initialized")
         print(f"  Health detection: {'✅' if self.health_available else '❌'}")
         print(f"  Fighter detection: {'✅' if self.fighter_available else '❌'}")
+        print(f"  Death detection threshold: {self.zero_threshold} frames")
     
     def get_current_state(self) -> GameState:
         """
@@ -264,6 +266,57 @@ class RoundStateMonitor:
         elif self.current_state.round_outcome == RoundOutcome.DRAW:
             return "DRAW"
         return None
+    
+    def wait_for_round_ready(self, timeout: float = 30.0) -> bool:
+        """
+        Wait until the next round is ready (health bars visible and both players at full health)
+        
+        Args:
+            timeout: Maximum time to wait in seconds
+            
+        Returns:
+            True if round is ready, False if timeout or detection unavailable
+        """
+        if not self.health_available:
+            print("⚠️  Health detection not available - skipping wait")
+            return True
+        
+        print(f"⏳ Waiting for round to start (timeout: {timeout}s)...")
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            if self.is_round_ready():
+                print("🎬 Round is ready to start!")
+                return True
+            
+            # Brief delay between checks
+            time.sleep(0.5)
+        
+        print("⏰ Timeout waiting for round to start")
+        return False
+    
+    def is_round_ready(self, min_health: float = 95.0) -> bool:
+        """
+        Check if round is ready to start (both players at near full health)
+        
+        Args:
+            min_health: Minimum health percentage required for both players
+            
+        Returns:
+            True if round is ready to start, False otherwise
+        """
+        if not self.health_available:
+            return True  # Assume ready if no health detection
+        
+        # Get current health state
+        state = self.get_current_state()
+        
+        # Round is ready when both players have high health
+        if (state.p1_health >= min_health and 
+            state.p2_health >= min_health):
+            return True
+        
+        return False
     
     def close(self):
         """Clean up resources"""
