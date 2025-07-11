@@ -24,7 +24,7 @@ from core.rl_training_simple import PPOAgent
 class MatchTrainingTester:
     """Test harness for verifying RL training on complete matches"""
     
-    def __init__(self, num_episodes: int = 6):  # 6 episodes should cover ~2 matches
+    def __init__(self, num_episodes: int = 3):  # 3 episodes for best-of-3 match
         self.num_episodes = num_episodes
         self.env = MatchRLEnvironment()
         self.agent = PPOAgent(
@@ -318,8 +318,8 @@ class MatchTrainingTester:
 
 def main():
     """Run the match training test"""
-    # Test with 6 episodes to cover multiple rounds and potentially 2+ matches
-    tester = MatchTrainingTester(num_episodes=6)
+    # Test with 3 episodes for proper best-of-3 match
+    tester = MatchTrainingTester(num_episodes=3)
     
     try:
         tester.run_test()

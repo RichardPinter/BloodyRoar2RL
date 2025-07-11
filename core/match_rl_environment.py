@@ -305,7 +305,12 @@ class MatchRLEnvironment:
     
     def get_actions(self) -> List[str]:
         """Get list of available actions"""
-        return self.current_round_env.actions if self.current_round_env else []
+        # Return default action list if no round environment exists yet
+        default_actions = [
+            'left', 'right', 'jump', 'squat', 'transform', 
+            'kick', 'punch', 'special', 'block', 'throw'
+        ]
+        return self.current_round_env.actions if self.current_round_env else default_actions
     
     def print_match_summary(self):
         """Print summary of all completed matches"""
