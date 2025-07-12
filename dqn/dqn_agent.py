@@ -102,8 +102,7 @@ class DQNAgent:
         self.replay_buffer = ReplayBuffer(
             capacity=replay_capacity,
             frame_stack=frame_stack,
-            img_size=img_size,
-            health_history_length=health_history_length
+            img_size=img_size
         )
         
         print(f"🤖 DQN Agent initialized:")
