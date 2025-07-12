@@ -31,9 +31,9 @@ class InteractiveDQNArcadeTrainer:
                  arcade_opponents: int = 3,
                  save_interval_episodes: int = 20,
                  models_dir: str = "models",
-                 frame_stack: int = 4,
+                 frame_stack: int = 8,
                  img_size: Tuple[int, int] = (84, 84),
-                 health_history_length: int = 4,
+                 health_history_length: int = 8,
                  lr: float = 1e-4,
                  epsilon_start: float = 1.0,
                  epsilon_end: float = 0.1,
@@ -158,7 +158,7 @@ class InteractiveDQNArcadeTrainer:
     
     def print_replay_buffer_status(self):
         """Print replay buffer status"""
-        buffer_size = self.agent.replay_buffer.size()
+        buffer_size = self.agent.replay_buffer.size
         capacity = self.agent.replay_buffer.capacity
         fill_percentage = (buffer_size / capacity) * 100
         
@@ -201,7 +201,7 @@ class InteractiveDQNArcadeTrainer:
         
         # Network training
         current_epsilon = self.agent.get_current_epsilon()
-        buffer_size = self.agent.replay_buffer.size()
+        buffer_size = self.agent.replay_buffer.size
         print(f"\\nDQN Training:")
         print(f"  Epsilon: {current_epsilon:.4f}")
         print(f"  Replay buffer: {buffer_size:,}")
@@ -230,7 +230,7 @@ class InteractiveDQNArcadeTrainer:
             'training_time': time.time() - self.training_start_time,
             'reason': reason,
             'timestamp': datetime.now().isoformat(),
-            'replay_buffer_size': self.agent.replay_buffer.size(),
+            'replay_buffer_size': self.agent.replay_buffer.size,
             'current_epsilon': self.agent.get_current_epsilon()
         }
         
@@ -353,7 +353,7 @@ class InteractiveDQNArcadeTrainer:
                     
                     # Train the agent
                     if (self.episode_count >= training_start_episode and 
-                        self.agent.replay_buffer.size() >= min_replay_size):
+                        self.agent.replay_buffer.size >= min_replay_size):
                         
                         if not self.training_active:
                             print(f"  🧠 DQN training activated at episode {self.episode_count}")
@@ -470,7 +470,7 @@ class InteractiveDQNArcadeTrainer:
         
         print(f"\\nDQN Training:")
         print(f"  Training updates: {self.agent.training_step:,}")
-        print(f"  Replay buffer size: {self.agent.replay_buffer.size():,}")
+        print(f"  Replay buffer size: {self.agent.replay_buffer.size:,}")
         print(f"  Final epsilon: {self.agent.get_current_epsilon():.4f}")
         
         if len(self.training_losses) > 0:
@@ -486,10 +486,10 @@ def main():
     
     # Create trainer
     trainer = InteractiveDQNArcadeTrainer(
-        arcade_opponents=3,      # Fight 3 opponents per arcade
-        frame_stack=4,           # 4 screenshot frames
+        arcade_opponents=99,     # Large number for continuous training
+        frame_stack=8,           # 8 screenshot frames
         img_size=(84, 84),       # 84x84 screenshots for speed
-        health_history_length=4, # 4 health samples
+        health_history_length=8, # 8 health samples
         lr=1e-4,                 # Conservative learning rate
         epsilon_decay=100000,    # Long exploration phase
         replay_capacity=200000,  # Large replay buffer for arcade
