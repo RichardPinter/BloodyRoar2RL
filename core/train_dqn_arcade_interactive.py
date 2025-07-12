@@ -238,7 +238,7 @@ class InteractiveDQNArcadeTrainer:
             metadata['avg_reward_last_100'] = float(np.mean(self.episode_rewards))
             
         # Save model
-        self.agent.save_model(filepath, metadata)
+        self.agent.save(filepath, metadata)
         self.last_save_time = time.time()
         
         print(f"✅ Checkpoint saved: {filename}")
@@ -251,7 +251,7 @@ class InteractiveDQNArcadeTrainer:
                 checkpoint = torch.load(filepath, map_location='cpu')
                 
                 # Load agent state
-                self.agent.load_model(filepath)
+                self.agent.load(filepath)
                 
                 # Restore training state from metadata
                 if 'metadata' in checkpoint:
@@ -417,7 +417,7 @@ class InteractiveDQNArcadeTrainer:
                         'arcade_progress': current_progress,
                         'timestamp': datetime.now().isoformat()
                     }
-                    self.agent.save_model(best_path, metadata)
+                    self.agent.save(best_path, metadata)
                     print(f"  🏆 New best reward: {self.best_reward:.3f}")
                 
                 # Periodic checkpoint

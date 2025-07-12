@@ -228,7 +228,7 @@ class DQNTrainer:
                     'total_steps': total_steps,
                     'timestamp': datetime.now().isoformat()
                 }
-                self.agent.save_model(model_path, metadata)
+                self.agent.save(model_path, metadata)
                 print(f"  🏆 New best reward: {best_reward:.3f}")
                 
             # Periodic detailed logging
@@ -245,7 +245,7 @@ class DQNTrainer:
                     'training_started': training_started,
                     'timestamp': datetime.now().isoformat()
                 }
-                self.agent.save_model(checkpoint_path, metadata)
+                self.agent.save(checkpoint_path, metadata)
                 print(f"  💾 Checkpoint saved: episode {episode + 1}")
                 
         print("\\n🎉 DQN Training Complete!")
@@ -348,7 +348,7 @@ class DQNTrainer:
     def load_model(self, model_path: str):
         """Load a saved model"""
         if os.path.exists(model_path):
-            self.agent.load_model(model_path)
+            self.agent.load(model_path)
             print(f"📂 Loaded model from {model_path}")
         else:
             print(f"❌ Model file not found: {model_path}")
