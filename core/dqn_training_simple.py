@@ -98,7 +98,7 @@ class DQNTrainer:
         print(f"   Observation space: {self.env.get_observation_space_size()}")
         print(f"   Exploration: ε {epsilon_start} → {epsilon_end} over {epsilon_decay:,} steps")
         print(f"   Replay buffer: {replay_capacity:,} transitions")
-        print(f"   Target update: every {target_update_freq} steps")
+        print(f"   Target update: every {self.target_update_freq} steps")
         
     def train(self, 
               num_episodes: int = 200, 
