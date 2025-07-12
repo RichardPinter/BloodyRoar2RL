@@ -11,7 +11,7 @@ ACTIONS = {
     # Fighting actions
     'transform': 'P1 ○',       # Circle = Transform
     'kick': 'P1 X',           # X = Kick  
-    'punch': 'P1 ⬜',         # Square = Punch
+    'punch': 'P1 ◻',         # Square = Punch
     'special': 'P1 △',        # Triangle = Special
     'block': 'P1 R1',         # R1 = Block
     'throw': 'P1 R2',         # R2 = Throw (alternative)
