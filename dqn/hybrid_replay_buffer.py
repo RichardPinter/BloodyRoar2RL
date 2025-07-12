@@ -29,9 +29,9 @@ class HybridReplayBuffer:
     
     def __init__(self, 
                  capacity: int = 50000,
-                 frame_stack: int = 4,
+                 frame_stack: int = 8,
                  img_size: Tuple[int, int] = (168, 168),
-                 health_history_length: int = 4):
+                 health_history_length: int = 8):
         """
         Initialize hybrid replay buffer.
         

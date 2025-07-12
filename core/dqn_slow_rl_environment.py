@@ -28,20 +28,23 @@ class DQNSlowRLEnvironment(BaseSlowRLEnvironment):
     """
     
     def __init__(self, 
-                 frame_stack_size: int = 4,
+                 frame_stack_size: int = 8,
                  img_size: Tuple[int, int] = (168, 168),
-                 health_history_length: int = 4,
+                 health_history_length: int = 8,
+                 observation_window_seconds: int = 8,
                  window_title: str = "Bloody Roar II (USA) [PlayStation] - BizHawk"):
         """
         Initialize DQN environment.
         
         Args:
             frame_stack_size: Number of screenshot frames to stack
-            img_size: Target size for screenshots (height, width)
+            img_size: Target size for screenshots (height, width)  
             health_history_length: Number of health frames to track
+            observation_window_seconds: How many seconds to observe (1 screenshot per second)
             window_title: Game window title for screenshot capture
         """
-        super().__init__()
+        # Initialize base environment with configurable observation window
+        super().__init__(observation_window=observation_window_seconds)
         
         self.frame_stack_size = frame_stack_size
         self.img_size = img_size

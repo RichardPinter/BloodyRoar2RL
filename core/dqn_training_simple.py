@@ -27,9 +27,10 @@ class DQNTrainer:
     """Main DQN training class that coordinates everything"""
     
     def __init__(self, 
-                 frame_stack: int = 4,
+                 frame_stack: int = 8,
                  img_size: Tuple[int, int] = (84, 84),
-                 health_history_length: int = 4,
+                 health_history_length: int = 8,
+                 observation_window_seconds: int = 8,
                  lr: float = 1e-4,
                  epsilon_start: float = 1.0,
                  epsilon_end: float = 0.1,
@@ -44,6 +45,7 @@ class DQNTrainer:
             frame_stack: Number of screenshot frames to stack
             img_size: Target size for screenshots (height, width)
             health_history_length: Number of health frames to track
+            observation_window_seconds: How many seconds to observe (1 screenshot per second)
             lr: Learning rate for network optimization
             epsilon_start: Initial exploration rate
             epsilon_end: Final exploration rate
@@ -59,7 +61,8 @@ class DQNTrainer:
         self.env = DQNSlowRLEnvironment(
             frame_stack_size=frame_stack,
             img_size=img_size,
-            health_history_length=health_history_length
+            health_history_length=health_history_length,
+            observation_window_seconds=observation_window_seconds
         )
         
         # Agent setup
@@ -94,6 +97,7 @@ class DQNTrainer:
         print(f"   Environment: DQN Slow RL (hybrid visual + health)")
         print(f"   Screenshot input: {frame_stack} × {img_size}")
         print(f"   Health history: {health_history_length} frames")
+        print(f"   Observation window: {observation_window_seconds} seconds")
         print(f"   Action space: {self.env.get_action_space_size()}")
         print(f"   Observation space: {self.env.get_observation_space_size()}")
         print(f"   Exploration: ε {epsilon_start} → {epsilon_end} over {epsilon_decay:,} steps")
@@ -344,9 +348,10 @@ def main():
     """Main function"""
     # Create trainer with sensible defaults for fighting game
     trainer = DQNTrainer(
-        frame_stack=4,           # 4 frames for temporal information
+        frame_stack=8,           # 8 frames for full temporal information
         img_size=(84, 84),       # Smaller images for faster training
-        health_history_length=4,  # 4 health samples
+        health_history_length=8,  # 8 health samples
+        observation_window_seconds=8,  # 8 seconds of observation (configurable)
         lr=1e-4,                 # Conservative learning rate
         epsilon_decay=50000,     # Explore for first ~250 episodes (200 steps/episode avg)
         replay_capacity=100000,  # Large replay buffer

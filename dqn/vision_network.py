@@ -20,11 +20,11 @@ class DQNVisionNetwork(nn.Module):
     Architecture optimized for:
     - CPU training (smaller filter counts)
     - Fighting game patterns (character positions, health bars)
-    - 1 FPS gameplay (temporal patterns across 4 frames)
+    - 1 FPS gameplay (temporal patterns across 8 frames)
     """
     
     def __init__(self, 
-                 frame_stack: int = 4,
+                 frame_stack: int = 8,
                  img_size: Tuple[int, int] = (168, 168),
                  num_actions: int = 10,
                  hidden_size: int = 256):
@@ -46,7 +46,7 @@ class DQNVisionNetwork(nn.Module):
         
         # Convolutional layers for feature extraction
         self.conv1 = nn.Conv2d(
-            in_channels=frame_stack,  # 4 stacked frames
+            in_channels=frame_stack,  # 8 stacked frames
             out_channels=16,          # Small for CPU efficiency
             kernel_size=8,            # Large kernels for downsampling
             stride=4,                 # Aggressive stride to reduce spatial dims

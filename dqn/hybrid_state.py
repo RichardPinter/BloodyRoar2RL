@@ -33,9 +33,9 @@ class HybridStateManager:
     """
     
     def __init__(self, 
-                 frame_stack_size: int = 4,
+                 frame_stack_size: int = 8,
                  img_size: Tuple[int, int] = (168, 168),
-                 health_history_length: int = 4):
+                 health_history_length: int = 8):
         """
         Initialize hybrid state manager.
         
@@ -84,10 +84,9 @@ class HybridStateManager:
         # Update frame count
         self.frame_count += 1
         
-        # Debug logging for first few frames
-        if self.frame_count <= 3:
-            print(f"   Frame {self.frame_count}: Screenshot {processed_screenshot.shape}, "
-                  f"Health P1={health_state.p1_health:.1f}% P2={health_state.p2_health:.1f}%")
+        # Debug logging for all frames during collection
+        print(f"   Frame {self.frame_count}: Screenshot {processed_screenshot.shape}, "
+              f"Health P1={health_state.p1_health:.1f}% P2={health_state.p2_health:.1f}%")
     
     def get_current_state(self) -> Tuple[np.ndarray, np.ndarray]:
         """
