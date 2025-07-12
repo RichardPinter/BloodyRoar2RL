@@ -246,6 +246,10 @@ class DQNAgent:
         return self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
                np.exp(-1.0 * self.steps_done / self.epsilon_decay)
     
+    def get_current_epsilon(self) -> float:
+        """Get current epsilon value (public interface)."""
+        return self._get_current_epsilon()
+    
     def save(self, path: str, metadata: dict = None):
         """
         Save model weights and training state.

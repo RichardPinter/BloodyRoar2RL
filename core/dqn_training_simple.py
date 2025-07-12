@@ -127,6 +127,7 @@ class DQNTrainer:
         total_steps = 0
         best_reward = -float('inf')
         training_started = False
+        steps_since_training = 0  # Counter for training every 4 steps
         
         for episode in range(num_episodes):
             # Reset environment and get initial state
@@ -168,10 +169,12 @@ class DQNTrainer:
                 episode_reward += reward
                 episode_length += 1
                 total_steps += 1
+                steps_since_training += 1
                 
-                # Train the agent (if enough experience and past warmup period)
+                # Train the agent every 4 steps (if enough experience and past warmup period)
                 if (episode >= training_start_episode and 
-                    self.agent.replay_buffer.size() >= min_replay_size):
+                    self.agent.replay_buffer.size() >= min_replay_size and
+                    steps_since_training >= 4):
                     
                     if not training_started:
                         print(f"  🧠 Starting DQN training at episode {episode + 1}")
@@ -182,6 +185,9 @@ class DQNTrainer:
                         episode_loss += loss
                         loss_count += 1
                         self.training_losses.append(loss)
+                        print(f"    🧠 Training update at step {episode_length} (loss: {loss:.4f})")
+                    
+                    steps_since_training = 0  # Reset counter after training
                 
                 # Move to next state
                 screenshots, health_history = next_screenshots, next_health_history
