@@ -30,7 +30,7 @@ def test_dqn_training_simple():
             epsilon_decay=1000,         # Fast decay for testing
             replay_capacity=1000,       # Small buffer for testing
             batch_size=8,               # Small batch for testing
-            target_update_freq=100      # Frequent updates for testing
+            target_update_frequency=100      # Frequent updates for testing
         )
         
         print(f"✅ DQN Trainer created successfully")
@@ -72,7 +72,7 @@ def test_dqn_arcade_training():
             epsilon_decay=500,          # Fast decay for testing
             replay_capacity=500,        # Small buffer for testing
             batch_size=4,               # Small batch for testing
-            target_update_freq=50       # Frequent updates for testing
+            target_update_frequency=50       # Frequent updates for testing
         )
         
         print(f"✅ DQN Arcade Trainer created successfully")
@@ -130,7 +130,7 @@ def test_training_components():
             next_screenshots, next_health, False
         )
         print(f"✅ Transition stored in replay buffer")
-        print(f"   Buffer size: {agent.replay_buffer.size()}")
+        print(f"   Buffer size: {agent.replay_buffer.size}")
         
         # Test model save/load paths
         test_path = "test_model.pth"

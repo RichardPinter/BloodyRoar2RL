@@ -1,0 +1,200 @@
+{
+  "training_sessions": [
+    {
+      "timestamp": "2025-07-11T16:56:50.142014",
+      "episode": 11,
+      "metadata": {
+        "episode_count": 11,
+        "training_duration": 2932.552817583084,
+        "arcade_completions": 0,
+        "best_arcade_progress": 0,
+        "avg_reward": -11.790909090909093,
+        "performance_score": 0.13231363636363636,
+        "timestamp": "20250711_165650",
+        "save_reason": "final"
+      }
+    },
+    {
+      "timestamp": "2025-07-11T10:31:15.500725",
+      "episode": 20,
+      "metadata": {
+        "episode_count": 20,
+        "training_duration": 6996.394765138626,
+        "arcade_completions": 0,
+        "best_arcade_progress": 1,
+        "avg_reward": -9.89625,
+        "performance_score": 0.20182229166666665,
+        "timestamp": "20250711_103115",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-11T11:48:43.417878",
+      "episode": 40,
+      "metadata": {
+        "episode_count": 40,
+        "training_duration": 11644.32462477684,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -10.739374999999999,
+        "performance_score": 0.26722427083333333,
+        "timestamp": "20250711_114843",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-11T13:22:47.922204",
+      "episode": 60,
+      "metadata": {
+        "episode_count": 60,
+        "training_duration": 17288.830577611923,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -13.03,
+        "performance_score": 0.2637883333333333,
+        "timestamp": "20250711_132247",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-11T14:50:10.323029",
+      "episode": 80,
+      "metadata": {
+        "episode_count": 80,
+        "training_duration": 22531.23135638237,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -13.7453125,
+        "performance_score": 0.26271536458333333,
+        "timestamp": "20250711_145010",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-11T16:19:21.715787",
+      "episode": 100,
+      "metadata": {
+        "episode_count": 100,
+        "training_duration": 27882.61407351494,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -14.158499999999998,
+        "performance_score": 0.2620955833333333,
+        "timestamp": "20250711_161921",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T03:18:11.117863",
+      "episode": 120,
+      "metadata": {
+        "episode_count": 120,
+        "training_duration": 67412.02539610863,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -14.832499999999998,
+        "performance_score": 0.26108458333333334,
+        "timestamp": "20250712_031811",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T04:42:50.065244",
+      "episode": 140,
+      "metadata": {
+        "episode_count": 140,
+        "training_duration": 72490.97103381157,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -14.943250000000003,
+        "performance_score": 0.2609184583333333,
+        "timestamp": "20250712_044250",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T06:05:49.219991",
+      "episode": 160,
+      "metadata": {
+        "episode_count": 160,
+        "training_duration": 77470.12785506248,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -14.315000000000005,
+        "performance_score": 0.2618608333333333,
+        "timestamp": "20250712_060549",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T07:34:35.080504",
+      "episode": 180,
+      "metadata": {
+        "episode_count": 180,
+        "training_duration": 82795.9843878746,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -14.465499999999999,
+        "performance_score": 0.26163508333333335,
+        "timestamp": "20250712_073435",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T08:48:58.238713",
+      "episode": 200,
+      "metadata": {
+        "episode_count": 200,
+        "training_duration": 87259.13425397873,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -14.562000000000001,
+        "performance_score": 0.2614903333333333,
+        "timestamp": "20250712_084858",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T10:17:16.209590",
+      "episode": 220,
+      "metadata": {
+        "episode_count": 220,
+        "training_duration": 92557.11541175842,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -15.537250000000002,
+        "performance_score": 0.2600274583333333,
+        "timestamp": "20250712_101716",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T12:01:37.338953",
+      "episode": 240,
+      "metadata": {
+        "episode_count": 240,
+        "training_duration": 98818.23637127876,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -16.43575,
+        "performance_score": 0.2586797083333333,
+        "timestamp": "20250712_120137",
+        "save_reason": "interval"
+      }
+    },
+    {
+      "timestamp": "2025-07-12T12:12:29.686883",
+      "episode": 243,
+      "metadata": {
+        "episode_count": 243,
+        "training_duration": 99470.59295678139,
+        "arcade_completions": 0,
+        "best_arcade_progress": 2,
+        "avg_reward": -16.689749999999997,
+        "performance_score": 0.25829870833333335,
+        "timestamp": "20250712_121229",
+        "save_reason": "final"
+      }
+    }
+  ]
+}

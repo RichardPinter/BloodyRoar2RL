@@ -1,0 +1,153 @@
+{
+  "summary": {
+    "num_episodes": 1,
+    "avg_reward": -9.975,
+    "avg_length": 12.0,
+    "win_rate": 0.0,
+    "loss_rate": 1.0,
+    "timeout_rate": 0.0,
+    "action_distribution": {
+      "transform": 4,
+      "left": 8
+    }
+  },
+  "episodes": [
+    {
+      "episode": 0,
+      "reward": -9.975,
+      "length": 12,
+      "outcome": "loss",
+      "initial_health": {
+        "p1": 99.5,
+        "p2": 99.75
+      },
+      "final_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "transform",
+          "reward": 0.525,
+          "p1_health": 99.5,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": -5.25,
+          "done": false
+        },
+        {
+          "step": 1,
+          "action": "left",
+          "reward": 0.0,
+          "p1_health": 99.5,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 2,
+          "action": "transform",
+          "reward": 0.0,
+          "p1_health": 99.5,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 3,
+          "action": "transform",
+          "reward": 0.0,
+          "p1_health": 99.5,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 4,
+          "action": "left",
+          "reward": -1.5250000000000001,
+          "p1_health": 84.25,
+          "p2_health": 94.5,
+          "p1_health_change": -15.25,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 5,
+          "action": "left",
+          "reward": 0.45,
+          "p1_health": 88.75,
+          "p2_health": 94.5,
+          "p1_health_change": 4.5,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 6,
+          "action": "left",
+          "reward": 0.125,
+          "p1_health": 90.0,
+          "p2_health": 94.5,
+          "p1_health_change": 1.25,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 7,
+          "action": "left",
+          "reward": 0.0,
+          "p1_health": 90.0,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 8,
+          "action": "left",
+          "reward": 0.0,
+          "p1_health": 90.0,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 9,
+          "action": "transform",
+          "reward": 0.0,
+          "p1_health": 90.0,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 10,
+          "action": "left",
+          "reward": 0.0,
+          "p1_health": 90.0,
+          "p2_health": 94.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "done": false
+        },
+        {
+          "step": 11,
+          "action": "left",
+          "reward": -9.549999999999999,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": -90.0,
+          "p2_health_change": -94.5,
+          "done": true
+        }
+      ]
+    }
+  ],
+  "diagnostic_issues": []
+}

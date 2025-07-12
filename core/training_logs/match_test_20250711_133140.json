@@ -1,0 +1,1333 @@
+{
+  "summary": {
+    "num_episodes": 3,
+    "avg_reward": 15.04166666666667,
+    "avg_length": 27.0,
+    "round_win_rate": 0.6666666666666666,
+    "round_loss_rate": 0.3333333333333333,
+    "matches_completed": 1,
+    "match_winners": [
+      "PLAYER 2"
+    ],
+    "action_distribution": {
+      "left": 2,
+      "kick": 55,
+      "right": 23,
+      "punch": 1
+    }
+  },
+  "episodes": [
+    {
+      "episode": 0,
+      "reward": 34.025000000000006,
+      "length": 36,
+      "outcome": "win",
+      "initial_health": {
+        "p1": 98.25,
+        "p2": 99.75
+      },
+      "final_health": {
+        "p1": 97.5,
+        "p2": 0.0
+      },
+      "match_context": {
+        "round": 1,
+        "initial_score": "0-0",
+        "was_match_point": false
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "left",
+          "reward": -0.07500000000000001,
+          "p1_health": 97.5,
+          "p2_health": 99.75,
+          "p1_health_change": -0.75,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 1,
+          "action": "kick",
+          "reward": 0.8250000000000001,
+          "p1_health": 97.5,
+          "p2_health": 91.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": -8.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 2,
+          "action": "kick",
+          "reward": -0.17500000000000002,
+          "p1_health": 97.5,
+          "p2_health": 93.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 1.75,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 3,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 93.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 4,
+          "action": "kick",
+          "reward": 1.125,
+          "p1_health": 97.5,
+          "p2_health": 82.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -11.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 5,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 82.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 6,
+          "action": "kick",
+          "reward": -0.42500000000000004,
+          "p1_health": 97.5,
+          "p2_health": 86.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 4.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 7,
+          "action": "kick",
+          "reward": -0.1,
+          "p1_health": 97.5,
+          "p2_health": 87.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 1.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 8,
+          "action": "kick",
+          "reward": -9.75,
+          "p1_health": 0.0,
+          "p2_health": 87.25,
+          "p1_health_change": -97.5,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 9,
+          "action": "kick",
+          "reward": 10.8,
+          "p1_health": 97.5,
+          "p2_health": 76.75,
+          "p1_health_change": 97.5,
+          "p2_health_change": -10.5,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 10,
+          "action": "kick",
+          "reward": -0.35000000000000003,
+          "p1_health": 97.5,
+          "p2_health": 80.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 3.5,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 11,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 80.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 12,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 80.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 13,
+          "action": "kick",
+          "reward": 8.025,
+          "p1_health": 97.5,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -80.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 14,
+          "action": "kick",
+          "reward": 1.7249999999999996,
+          "p1_health": 97.5,
+          "p2_health": 80.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 80.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 15,
+          "action": "kick",
+          "reward": 1.2000000000000002,
+          "p1_health": 97.5,
+          "p2_health": 68.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": -12.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 16,
+          "action": "kick",
+          "reward": -0.35000000000000003,
+          "p1_health": 97.5,
+          "p2_health": 71.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 3.5,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 17,
+          "action": "kick",
+          "reward": -0.17500000000000002,
+          "p1_health": 97.5,
+          "p2_health": 73.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 1.75,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 18,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 73.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 19,
+          "action": "kick",
+          "reward": 0.8250000000000001,
+          "p1_health": 97.5,
+          "p2_health": 65.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": -8.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 20,
+          "action": "kick",
+          "reward": -0.275,
+          "p1_health": 97.5,
+          "p2_health": 68.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 2.75,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 21,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 68.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 22,
+          "action": "kick",
+          "reward": 0.8500000000000001,
+          "p1_health": 97.5,
+          "p2_health": 59.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": -8.5,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 23,
+          "action": "kick",
+          "reward": 1.3250000000000002,
+          "p1_health": 97.5,
+          "p2_health": 51.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": -7.75,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 24,
+          "action": "kick",
+          "reward": -0.325,
+          "p1_health": 97.5,
+          "p2_health": 55.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 4.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 25,
+          "action": "kick",
+          "reward": 1.1500000000000001,
+          "p1_health": 97.5,
+          "p2_health": 44.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": -11.5,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 26,
+          "action": "kick",
+          "reward": 0.07500000000000001,
+          "p1_health": 97.5,
+          "p2_health": 43.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": -0.75,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 27,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 43.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 28,
+          "action": "kick",
+          "reward": 1.0250000000000001,
+          "p1_health": 97.5,
+          "p2_health": 33.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 29,
+          "action": "kick",
+          "reward": 4.75,
+          "p1_health": 97.5,
+          "p2_health": 23.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 30,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 23.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 31,
+          "action": "kick",
+          "reward": 0.9500000000000001,
+          "p1_health": 97.5,
+          "p2_health": 13.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": -9.5,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 32,
+          "action": "kick",
+          "reward": 1.0250000000000001,
+          "p1_health": 97.5,
+          "p2_health": 3.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.25,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 33,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 97.5,
+          "p2_health": 3.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 34,
+          "action": "kick",
+          "reward": 0.35000000000000003,
+          "p1_health": 97.5,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -3.5,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 35,
+          "action": "kick",
+          "reward": 10.0,
+          "p1_health": 97.5,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 1,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": true
+        }
+      ]
+    },
+    {
+      "episode": 1,
+      "reward": 21.1,
+      "length": 44,
+      "outcome": "win",
+      "initial_health": {
+        "p1": 99.5,
+        "p2": 99.75
+      },
+      "final_health": {
+        "p1": 55.75,
+        "p2": 0.0
+      },
+      "match_context": {
+        "round": 2,
+        "initial_score": "0-0",
+        "was_match_point": false
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 99.5,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 1,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 99.5,
+          "p2_health": 99.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 2,
+          "action": "kick",
+          "reward": 1.05,
+          "p1_health": 99.5,
+          "p2_health": 89.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.5,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 3,
+          "action": "right",
+          "reward": -0.8250000000000001,
+          "p1_health": 91.25,
+          "p2_health": 89.25,
+          "p1_health_change": -8.25,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 4,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 89.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 5,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 89.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 6,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 89.25,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 7,
+          "action": "kick",
+          "reward": 1.125,
+          "p1_health": 91.25,
+          "p2_health": 78.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -11.25,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 8,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 78.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 9,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 78.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 10,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 78.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 11,
+          "action": "kick",
+          "reward": 1.0,
+          "p1_health": 91.25,
+          "p2_health": 68.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 12,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 68.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 13,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 68.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 14,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 68.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 15,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 68.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 16,
+          "action": "kick",
+          "reward": 1.0250000000000001,
+          "p1_health": 91.25,
+          "p2_health": 57.75,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.25,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 17,
+          "action": "kick",
+          "reward": 1.175,
+          "p1_health": 91.25,
+          "p2_health": 46.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -11.75,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 18,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 46.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 19,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 46.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 20,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 46.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 21,
+          "action": "kick",
+          "reward": 1.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 22,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 23,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 24,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 25,
+          "action": "punch",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 26,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 27,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 28,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 91.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 29,
+          "action": "kick",
+          "reward": -1.8,
+          "p1_health": 73.25,
+          "p2_health": 36.0,
+          "p1_health_change": -18.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 30,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 73.25,
+          "p2_health": 36.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 31,
+          "action": "kick",
+          "reward": 1.1500000000000001,
+          "p1_health": 73.25,
+          "p2_health": 24.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": -11.5,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 32,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 73.25,
+          "p2_health": 24.5,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 33,
+          "action": "kick",
+          "reward": -1.75,
+          "p1_health": 55.75,
+          "p2_health": 24.5,
+          "p1_health_change": -17.5,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 34,
+          "action": "kick",
+          "reward": 1.05,
+          "p1_health": 55.75,
+          "p2_health": 14.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.5,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 35,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 55.75,
+          "p2_health": 14.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 36,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 55.75,
+          "p2_health": 14.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 37,
+          "action": "kick",
+          "reward": 1.0,
+          "p1_health": 55.75,
+          "p2_health": 4.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -10.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 38,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 55.75,
+          "p2_health": 4.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 39,
+          "action": "kick",
+          "reward": 0.0,
+          "p1_health": 55.75,
+          "p2_health": 4.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 40,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 55.75,
+          "p2_health": 4.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 41,
+          "action": "right",
+          "reward": 0.0,
+          "p1_health": 55.75,
+          "p2_health": 4.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 42,
+          "action": "kick",
+          "reward": 5.9,
+          "p1_health": 55.75,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": -4.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": false
+        },
+        {
+          "step": 43,
+          "action": "kick",
+          "reward": 10.0,
+          "p1_health": 55.75,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 2,
+            "score": "0-0",
+            "match_point": false
+          },
+          "done": true
+        }
+      ]
+    },
+    {
+      "episode": 2,
+      "reward": -10.0,
+      "length": 1,
+      "outcome": "loss",
+      "initial_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "final_health": {
+        "p1": 0.0,
+        "p2": 0.0
+      },
+      "match_context": {
+        "round": 3,
+        "initial_score": "0-0",
+        "was_match_point": true
+      },
+      "steps": [
+        {
+          "step": 0,
+          "action": "left",
+          "reward": -10.0,
+          "p1_health": 0.0,
+          "p2_health": 0.0,
+          "p1_health_change": 0.0,
+          "p2_health_change": 0.0,
+          "match_context": {
+            "round": 3,
+            "score": "0-0",
+            "match_point": true
+          },
+          "done": true
+        }
+      ]
+    }
+  ],
+  "match_results": [
+    {
+      "match_episode": 1,
+      "winner": "PLAYER 2",
+      "duration": 806.0900492668152,
+      "total_rounds": 3,
+      "p1_rounds_won": 0,
+      "p2_rounds_won": 0,
+      "outcome": "player_loss",
+      "round_results": [
+        {
+          "round": 1,
+          "winner": "UNKNOWN",
+          "duration": 315.02297854423523,
+          "p1_health": 0.0,
+          "p2_health": 0.0
+        },
+        {
+          "round": 2,
+          "winner": "UNKNOWN",
+          "duration": 385.99912214279175,
+          "p1_health": 0.0,
+          "p2_health": 0.0
+        },
+        {
+          "round": 3,
+          "winner": "UNKNOWN",
+          "duration": 33.940810680389404,
+          "p1_health": 0.0,
+          "p2_health": 0.0
+        }
+      ]
+    }
+  ]
+}
