@@ -54,7 +54,7 @@ class MatchRLEnvironment:
     Supports both PPO and DQN agents through factory pattern.
     """
     
-    def __init__(self, max_rounds: int = 3, rounds_to_win: int = 2, env_type: str = "ppo"):
+    def __init__(self, max_rounds: int = 3, rounds_to_win: int = 2, env_type: str = "ppo", img_size: Tuple[int, int] = (84, 84)):
         """
         Initialize match environment.
         
@@ -62,11 +62,13 @@ class MatchRLEnvironment:
             max_rounds: Maximum rounds per match (usually 3)
             rounds_to_win: Rounds needed to win match (usually 2)
             env_type: Type of environment ("ppo" or "dqn")
+            img_size: Target size for screenshots (height, width) - only used for DQN
         """
         print("Initializing Match RL Environment...")
         
-        # Store environment type
+        # Store environment type and configuration
         self.env_type = env_type
+        self.img_size = img_size
         
         # Initialize match manager
         self.match_manager = MatchManager(max_rounds=max_rounds, rounds_to_win=rounds_to_win)
@@ -213,7 +215,7 @@ class MatchRLEnvironment:
         if self.env_type == "ppo":
             self.current_round_env = PPOSlowRLEnvironment()
         elif self.env_type == "dqn":
-            self.current_round_env = DQNSlowRLEnvironment()
+            self.current_round_env = DQNSlowRLEnvironment(img_size=self.img_size)
         else:
             raise ValueError(f"Unsupported environment type: {self.env_type}")
         

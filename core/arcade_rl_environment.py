@@ -45,7 +45,8 @@ class ArcadeRLEnvironment:
     def __init__(self, 
                  matches_to_win: int = 8, 
                  match_transition_delay: float = 3.0,
-                 env_type: str = "ppo"):
+                 env_type: str = "ppo",
+                 img_size: Tuple[int, int] = (84, 84)):
         """
         Initialize arcade environment.
         
@@ -53,6 +54,7 @@ class ArcadeRLEnvironment:
             matches_to_win: Number of matches to win for arcade completion
             match_transition_delay: Delay between matches
             env_type: Type of environment ("ppo" or "dqn")
+            img_size: Target size for screenshots (height, width) - only used for DQN
         """
         print("Initializing Arcade RL Environment...")
         
@@ -62,7 +64,7 @@ class ArcadeRLEnvironment:
         self.env_type = env_type
         
         # Initialize match environment with factory pattern
-        self.match_env = MatchRLEnvironment(env_type=env_type)
+        self.match_env = MatchRLEnvironment(env_type=env_type, img_size=img_size)
         
         # Arcade state
         self.arcade_state = ArcadeState(
