@@ -144,7 +144,8 @@ class DQNSlowRLEnvironment(BaseSlowRLEnvironment):
         """Clean up environment"""
         super().close()
         if self.window_capture:
-            self.window_capture.close()
+            # WindowCapture doesn't have a close method, just clear the reference
+            self.window_capture = None
         print("DQN Slow RL Environment closed")
 
 
