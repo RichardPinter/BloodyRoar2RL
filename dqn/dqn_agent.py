@@ -81,16 +81,14 @@ class DQNAgent:
         self.q_network = DQNVisionNetwork(
             frame_stack=frame_stack,
             img_size=img_size,
-            num_actions=num_actions,
-            health_history_length=health_history_length
+            num_actions=num_actions
         )
         
         # Target network (for stable training)
         self.target_network = DQNVisionNetwork(
             frame_stack=frame_stack,
             img_size=img_size,
-            num_actions=num_actions,
-            health_history_length=health_history_length
+            num_actions=num_actions
         )
         
         # Initialize target network with same weights
