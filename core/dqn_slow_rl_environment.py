@@ -116,11 +116,16 @@ class DQNSlowRLEnvironment(BaseSlowRLEnvironment):
                 screenshot = np.zeros((100, 150, 3), dtype=np.uint8)
         
         # Add frame to hybrid state manager
-        health_state = self.round_monitor.current_state.health_state
-        if health_state is not None:
-            self.hybrid_state_manager.add_frame(screenshot, health_state)
-        else:
-            print("⚠️ No health state available for hybrid state manager")
+        # Create HealthState from GameState data
+        from detection.health_detector import HealthState
+        health_state = HealthState(
+            p1_health=game_state.p1_health,
+            p2_health=game_state.p2_health,
+            p1_pixels=0,  # Not available from GameState, but not needed for DQN
+            p2_pixels=0   # Not available from GameState, but not needed for DQN
+        )
+        
+        self.hybrid_state_manager.add_frame(screenshot, health_state)
     
     def reset(self) -> Tuple[np.ndarray, np.ndarray]:
         """

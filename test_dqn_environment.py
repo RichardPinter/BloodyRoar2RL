@@ -149,7 +149,7 @@ def test_observation_hook():
             p2_position=(350, 200),
             fighter_distance=200.0,
             frame_count=1000,
-            health_state=mock_health_state
+            timestamp=time.time()
         )
         
         # Test observation collection hook
@@ -161,8 +161,9 @@ def test_observation_hook():
         
         # Test multiple calls
         for i in range(3):
-            mock_health_state.p1_health -= 2.0
-            mock_health_state.p2_health -= 1.5
+            # Update the mock game state health values
+            mock_game_state.p1_health -= 2.0
+            mock_game_state.p2_health -= 1.5
             env._on_observation_collected(mock_game_state)
         
         print(f"   Manager frame count after 4 calls: {env.hybrid_state_manager.frame_count}")
