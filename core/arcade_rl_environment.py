@@ -226,12 +226,12 @@ class ArcadeRLEnvironment:
             screenshots, health_history = match_state
             
             # Extend health history with arcade features
-            # Shape: (health_history_length, 4) → (health_history_length, 7)
+            # Shape: (health_history_length, N) → (health_history_length, N + 3)
             extended_health = np.zeros((health_history.shape[0], health_history.shape[1] + 3), dtype=np.float32)
-            extended_health[:, :4] = health_history  # Original health data
+            extended_health[:, :health_history.shape[1]] = health_history  # Previous health data
             
             # Add arcade features to each frame (broadcast)
-            extended_health[:, 4:] = arcade_features[np.newaxis, :]  # Broadcast to all frames
+            extended_health[:, health_history.shape[1]:] = arcade_features[np.newaxis, :]  # Broadcast to all frames
             
             return screenshots, extended_health
     

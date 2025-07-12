@@ -25,7 +25,7 @@ import os
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dqn.vision_network import DQNVisionNetwork
-from dqn.replay_buffer import ReplayBuffer
+from dqn.hybrid_replay_buffer import HybridReplayBuffer
 
 
 class DQNAgent:
@@ -99,10 +99,11 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=lr)
         
         # Experience replay
-        self.replay_buffer = ReplayBuffer(
+        self.replay_buffer = HybridReplayBuffer(
             capacity=replay_capacity,
             frame_stack=frame_stack,
-            img_size=img_size
+            img_size=img_size,
+            health_history_length=health_history_length
         )
         
         print(f"🤖 DQN Agent initialized:")

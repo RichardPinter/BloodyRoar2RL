@@ -40,7 +40,7 @@ class InteractiveDQNArcadeTrainer:
                  epsilon_decay: int = 100000,
                  replay_capacity: int = 200000,
                  batch_size: int = 32,
-                 target_update_freq: int = 2000):
+                 target_update_frequency: int = 2000):
         
         self.arcade_opponents = arcade_opponents
         self.save_interval = save_interval_episodes
@@ -67,7 +67,7 @@ class InteractiveDQNArcadeTrainer:
             epsilon_end=epsilon_end,
             epsilon_decay=epsilon_decay,
             replay_capacity=replay_capacity,
-            target_update_freq=target_update_freq
+            target_update_frequency=target_update_frequency
         )
         
         # Training state
@@ -493,7 +493,7 @@ def main():
         lr=1e-4,                 # Conservative learning rate
         epsilon_decay=100000,    # Long exploration phase
         replay_capacity=200000,  # Large replay buffer for arcade
-        target_update_freq=2000  # Less frequent target updates
+        target_update_frequency=2000  # Less frequent target updates
     )
     
     # Check for existing checkpoints

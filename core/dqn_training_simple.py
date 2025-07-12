@@ -36,7 +36,7 @@ class DQNTrainer:
                  epsilon_decay: int = 50000,
                  replay_capacity: int = 100000,
                  batch_size: int = 32,
-                 target_update_freq: int = 1000):
+                 target_update_frequency: int = 1000):
         """
         Initialize DQN trainer.
         
@@ -73,12 +73,12 @@ class DQNTrainer:
             epsilon_end=epsilon_end,
             epsilon_decay=epsilon_decay,
             replay_capacity=replay_capacity,
-            target_update_freq=target_update_freq
+            target_update_frequency=target_update_frequency
         )
         
         # Training parameters
         self.batch_size = batch_size
-        self.target_update_freq = target_update_freq
+        self.target_update_freq = target_update_frequency
         
         # Training stats
         self.episode_rewards = deque(maxlen=100)
@@ -351,7 +351,7 @@ def main():
         epsilon_decay=50000,     # Explore for first ~250 episodes (200 steps/episode avg)
         replay_capacity=100000,  # Large replay buffer
         batch_size=32,           # Standard batch size
-        target_update_freq=1000  # Update target network every 1000 steps
+        target_update_frequency=1000  # Update target network every 1000 steps
     )
     
     try:
