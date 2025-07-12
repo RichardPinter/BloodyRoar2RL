@@ -99,13 +99,29 @@ class HealthHistoryTracker:
             padding = np.repeat(first_frame, padding_needed, axis=0)
             health_data = np.vstack([padding, health_data])
         
-        # Calculate deltas
+        # Calculate deltas with 0% filtering
         deltas = np.zeros((self.history_length, 2), dtype=np.float32)
         
         for i in range(1, self.history_length):
-            # Delta = current - previous
-            deltas[i, 0] = health_data[i, 0] - health_data[i-1, 0]  # P1 delta
-            deltas[i, 1] = health_data[i, 1] - health_data[i-1, 1]  # P2 delta
+            # P1 delta calculation
+            current_p1 = health_data[i, 0]
+            if current_p1 == 0.0:
+                # Don't trust 0% readings
+                deltas[i, 0] = 0.0
+            else:
+                # Find last valid (non-zero) P1 health reading
+                last_valid_p1 = self._find_last_valid_health(health_data[:i+1, 0])
+                deltas[i, 0] = current_p1 - last_valid_p1 if last_valid_p1 is not None else 0.0
+            
+            # P2 delta calculation
+            current_p2 = health_data[i, 1]
+            if current_p2 == 0.0:
+                # Don't trust 0% readings
+                deltas[i, 1] = 0.0
+            else:
+                # Find last valid (non-zero) P2 health reading
+                last_valid_p2 = self._find_last_valid_health(health_data[:i+1, 1])
+                deltas[i, 1] = current_p2 - last_valid_p2 if last_valid_p2 is not None else 0.0
         
         # For first frame, delta is 0 (no previous frame)
         deltas[0] = [0.0, 0.0]
@@ -115,6 +131,24 @@ class HealthHistoryTracker:
         result = np.hstack([health_data, deltas])
         
         return result
+    
+    def _find_last_valid_health(self, health_sequence: np.ndarray) -> Optional[float]:
+        """
+        Find the last valid (non-zero) health reading in a sequence.
+        
+        Args:
+            health_sequence: Array of health values to search backwards
+            
+        Returns:
+            Last valid health value, or None if no valid readings found
+        """
+        # Search backwards from most recent
+        for i in range(len(health_sequence) - 2, -1, -1):  # Skip current frame (last element)
+            if health_sequence[i] > 0.0:
+                return health_sequence[i]
+        
+        # No valid health found, return None
+        return None
     
     def get_latest_health(self) -> Optional[Tuple[float, float]]:
         """
@@ -315,6 +349,84 @@ class HealthHistoryTester:
             print(f"❌ Different lengths test failed: {e}")
             return False
     
+    def test_zero_filtering(self):
+        """Test filtering of 0% health readings."""
+        print("\n🧪 Testing 0% Health Filtering...")
+        
+        try:
+            tracker = HealthHistoryTracker(history_length=4)
+            
+            # Test sequence with 0% readings: [100%, 95%, 0%, 90%]
+            health_states = [
+                HealthState(p1_health=100.0, p2_health=100.0, p1_pixels=0, p2_pixels=0),
+                HealthState(p1_health=95.0, p2_health=98.0, p1_pixels=20, p2_pixels=8),
+                HealthState(p1_health=0.0, p2_health=0.0, p1_pixels=400, p2_pixels=400),  # False reading
+                HealthState(p1_health=90.0, p2_health=95.0, p1_pixels=40, p2_pixels=20),
+            ]
+            
+            # Add health states
+            for health_state in health_states:
+                tracker.add_health_state(health_state)
+            
+            # Get history with deltas
+            history = tracker.get_health_history()
+            
+            print("Health sequence with 0% filtering:")
+            print("Frame | P1 Health | P2 Health | P1 Delta | P2 Delta | Expected Delta")
+            print("------|-----------|-----------|----------|----------|---------------")
+            
+            expected_p1_deltas = [0.0, -5.0, 0.0, -5.0]  # 0% reading should give 0 delta, 90% should be 90-95=-5
+            expected_p2_deltas = [0.0, -2.0, 0.0, -3.0]  # 0% reading should give 0 delta, 95% should be 95-98=-3
+            
+            for i, frame_data in enumerate(history):
+                p1_health, p2_health, p1_delta, p2_delta = frame_data
+                exp_p1, exp_p2 = expected_p1_deltas[i], expected_p2_deltas[i]
+                
+                print(f"{i+1:5d} | {p1_health:8.1f}% | {p2_health:8.1f}% | "
+                      f"{p1_delta:+7.1f}% | {p2_delta:+7.1f}% | P1:{exp_p1:+.1f} P2:{exp_p2:+.1f}")
+                
+                # Verify deltas are as expected
+                assert abs(p1_delta - exp_p1) < 0.1, f"P1 delta mismatch: {p1_delta} vs {exp_p1}"
+                assert abs(p2_delta - exp_p2) < 0.1, f"P2 delta mismatch: {p2_delta} vs {exp_p2}"
+            
+            print("✅ 0% filtering working correctly!")
+            
+            # Test multiple zeros in a row
+            print("\nTesting multiple 0% readings in a row...")
+            tracker.reset()
+            
+            multiple_zero_states = [
+                HealthState(p1_health=80.0, p2_health=90.0, p1_pixels=80, p2_pixels=40),
+                HealthState(p1_health=0.0, p2_health=0.0, p1_pixels=400, p2_pixels=400),  # False reading 1
+                HealthState(p1_health=0.0, p2_health=0.0, p1_pixels=400, p2_pixels=400),  # False reading 2  
+                HealthState(p1_health=75.0, p2_health=85.0, p1_pixels=100, p2_pixels=60),
+            ]
+            
+            for health_state in multiple_zero_states:
+                tracker.add_health_state(health_state)
+            
+            history = tracker.get_health_history()
+            
+            # Last frame should have delta of 75-80=-5 and 85-90=-5 (ignoring the 0% readings)
+            last_frame = history[-1]
+            p1_delta, p2_delta = last_frame[2], last_frame[3]
+            
+            print(f"Multiple zeros test - Final deltas: P1={p1_delta:+.1f}%, P2={p2_delta:+.1f}%")
+            print("Expected: P1=-5.0%, P2=-5.0% (ignoring 0% readings)")
+            
+            assert abs(p1_delta - (-5.0)) < 0.1, f"Multiple zeros P1 delta wrong: {p1_delta}"
+            assert abs(p2_delta - (-5.0)) < 0.1, f"Multiple zeros P2 delta wrong: {p2_delta}"
+            
+            print("✅ Multiple 0% filtering working correctly!")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Zero filtering test failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
     def run_all_tests(self):
         """Run complete test suite."""
         print("🧪 HEALTH HISTORY TRACKER TEST SUITE")
@@ -323,7 +435,8 @@ class HealthHistoryTester:
         tests = [
             ("Basic Functionality", self.test_basic_functionality),
             ("Insufficient Data", self.test_insufficient_data),
-            ("Different Lengths", self.test_different_history_lengths)
+            ("Different Lengths", self.test_different_history_lengths),
+            ("Zero Filtering", self.test_zero_filtering)
         ]
         
         all_passed = True

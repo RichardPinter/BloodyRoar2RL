@@ -15,7 +15,7 @@ Key Features:
 
 import time
 import numpy as np
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Union
 from dataclasses import dataclass
 from datetime import datetime
 import sys
@@ -38,17 +38,31 @@ class ArcadeRLEnvironment:
     """
     Arcade mode environment for 8-match tournament training.
     Each episode is still one round, but with arcade context.
+    
+    Supports both PPO and DQN agents through factory pattern.
     """
     
-    def __init__(self, matches_to_win: int = 8, match_transition_delay: float = 3.0):
+    def __init__(self, 
+                 matches_to_win: int = 8, 
+                 match_transition_delay: float = 3.0,
+                 env_type: str = "ppo"):
+        """
+        Initialize arcade environment.
+        
+        Args:
+            matches_to_win: Number of matches to win for arcade completion
+            match_transition_delay: Delay between matches
+            env_type: Type of environment ("ppo" or "dqn")
+        """
         print("Initializing Arcade RL Environment...")
         
         # Arcade configuration
         self.matches_to_win = matches_to_win
         self.match_transition_delay = match_transition_delay
+        self.env_type = env_type
         
-        # Initialize match environment
-        self.match_env = MatchRLEnvironment()
+        # Initialize match environment with factory pattern
+        self.match_env = MatchRLEnvironment(env_type=env_type)
         
         # Arcade state
         self.arcade_state = ArcadeState(
@@ -67,14 +81,19 @@ class ArcadeRLEnvironment:
         self.current_arcade_start_time = None
         
         print(f"Arcade RL Environment initialized:")
+        print(f"  Environment type: {env_type.upper()}")
         print(f"  Arcade format: Win {matches_to_win} matches in a row")
         print(f"  Match transition delay: {match_transition_delay}s")
         print(f"  Failure condition: Lose any match")
     
-    def reset(self) -> np.ndarray:
+    def reset(self) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
         Reset environment for new round
         Starts new arcade if previous one ended
+        
+        Returns:
+            For PPO: np.ndarray (flat observation + arcade features)
+            For DQN: Tuple[np.ndarray, np.ndarray] (screenshots, health_history + arcade features)
         """
         # Check if we need to start a new arcade
         if not self.arcade_state.arcade_active:
@@ -96,7 +115,7 @@ class ArcadeRLEnvironment:
         
         return arcade_extended_state
     
-    def step(self, action_index: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(self, action_index: int) -> Tuple[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]], float, bool, Dict[str, Any]]:
         """
         Take a step in the current round
         """
@@ -191,15 +210,30 @@ class ArcadeRLEnvironment:
             if self.arcade_state.is_final_opponent:
                 print("   🔥 FINAL OPPONENT! Beat this to complete arcade!")
     
-    def _extend_state_with_arcade(self, match_state: np.ndarray) -> np.ndarray:
-        """Add arcade context to state vector"""
-        arcade_features = [
+    def _extend_state_with_arcade(self, match_state: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """Add arcade context to state"""
+        arcade_features = np.array([
             float(self.arcade_state.current_opponent),     # Current opponent (1-8)
             float(self.arcade_state.total_wins),           # Total opponents beaten
             float(self.arcade_state.is_final_opponent)     # 1.0 if final opponent
-        ]
+        ], dtype=np.float32)
         
-        return np.concatenate([match_state, arcade_features]).astype(np.float32)
+        if self.env_type == "ppo":
+            # PPO: Flat vector input, concatenate arcade features
+            return np.concatenate([match_state, arcade_features]).astype(np.float32)
+        else:
+            # DQN: Tuple input (screenshots, health_history)
+            screenshots, health_history = match_state
+            
+            # Extend health history with arcade features
+            # Shape: (health_history_length, 4) → (health_history_length, 7)
+            extended_health = np.zeros((health_history.shape[0], health_history.shape[1] + 3), dtype=np.float32)
+            extended_health[:, :4] = health_history  # Original health data
+            
+            # Add arcade features to each frame (broadcast)
+            extended_health[:, 4:] = arcade_features[np.newaxis, :]  # Broadcast to all frames
+            
+            return screenshots, extended_health
     
     def _trigger_auto_restart(self):
         """Auto-restart sequence: send actions until health bars appear"""
@@ -276,7 +310,11 @@ class ArcadeRLEnvironment:
     
     def get_observation_space_size(self) -> int:
         """Get size of observation space"""
-        return self.match_env.get_observation_space_size() + 3  # +3 arcade features
+        if self.env_type == "ppo":
+            return self.match_env.get_observation_space_size() + 3  # +3 arcade features
+        else:
+            # DQN uses tuple output, return base size for compatibility
+            return self.match_env.get_observation_space_size()
     
     def get_action_space_size(self) -> int:
         """Get size of action space"""

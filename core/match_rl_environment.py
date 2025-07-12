@@ -16,21 +16,22 @@ Key Features:
 
 import time
 import numpy as np
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Union
 from dataclasses import dataclass
 from datetime import datetime
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.slow_rl_environment import SlowRLEnvironment
+from core.ppo_slow_rl_environment import PPOSlowRLEnvironment
+from core.dqn_slow_rl_environment import DQNSlowRLEnvironment
 from core.match_manager import MatchManager, MatchOutcome, RoundResult
 
 @dataclass
 class MatchRLState:
     """Extended state information including match context"""
-    # Round-level state (from SlowRLEnvironment)
-    round_state: np.ndarray
+    # Round-level state (from base environment)
+    round_state: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]
     
     # Match context
     current_round: int
@@ -49,16 +50,29 @@ class MatchRLEnvironment:
     """
     RL Environment that manages complete matches using MatchManager.
     Trains on individual rounds but maintains match-level context and statistics.
+    
+    Supports both PPO and DQN agents through factory pattern.
     """
     
-    def __init__(self, max_rounds: int = 3, rounds_to_win: int = 2):
+    def __init__(self, max_rounds: int = 3, rounds_to_win: int = 2, env_type: str = "ppo"):
+        """
+        Initialize match environment.
+        
+        Args:
+            max_rounds: Maximum rounds per match (usually 3)
+            rounds_to_win: Rounds needed to win match (usually 2)
+            env_type: Type of environment ("ppo" or "dqn")
+        """
         print("Initializing Match RL Environment...")
+        
+        # Store environment type
+        self.env_type = env_type
         
         # Initialize match manager
         self.match_manager = MatchManager(max_rounds=max_rounds, rounds_to_win=rounds_to_win)
         
         # Current round environment (created fresh for each round)
-        self.current_round_env: Optional[SlowRLEnvironment] = None
+        self.current_round_env: Optional[Union[PPOSlowRLEnvironment, DQNSlowRLEnvironment]] = None
         
         # Match configuration
         self.max_rounds = max_rounds
@@ -73,15 +87,17 @@ class MatchRLEnvironment:
         self.match_results: List[Dict[str, Any]] = []
         
         print(f"Match RL Environment initialized:")
+        print(f"  Environment type: {env_type.upper()}")
         print(f"  Match format: Best-of-{max_rounds} (first to {rounds_to_win})")
         print(f"  Episode scope: One round per episode with match context")
     
-    def reset(self) -> np.ndarray:
+    def reset(self) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
         Reset environment for new round (or new match if previous match finished)
         
         Returns:
-            Initial state for round with match context
+            For PPO: np.ndarray (flat observation + match features)
+            For DQN: Tuple[np.ndarray, np.ndarray] (screenshots, health_history + match features)
         """
         # Check if we need to start a new match
         if not self.current_match_active or self.match_manager.is_match_finished():
@@ -103,9 +119,9 @@ class MatchRLEnvironment:
         elif match_state.match_point_p2:
             print(f"   🔥 MATCH POINT for P2!")
         
-        return self._state_to_array(match_state)
+        return self._match_state_to_output(match_state)
     
-    def step(self, action_index: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(self, action_index: int) -> Tuple[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]], float, bool, Dict[str, Any]]:
         """
         Take an RL step in the current round
         
@@ -179,7 +195,7 @@ class MatchRLEnvironment:
                 else:
                     print(f"   Match continues... Score: P1={self.match_manager.stats.p1_rounds_won} P2={self.match_manager.stats.p2_rounds_won}")
         
-        return self._state_to_array(match_state), total_reward, episode_done, match_info
+        return self._match_state_to_output(match_state), total_reward, episode_done, match_info
     
     def _start_new_match(self):
         """Start a new match"""
@@ -193,21 +209,24 @@ class MatchRLEnvironment:
     
     def _start_next_round(self):
         """Start the next round in the current match"""
-        # Get death detection threshold from SlowRLEnvironment config
-        temp_env = SlowRLEnvironment()
-        death_threshold = temp_env.observation_window * temp_env.death_detection_ratio
+        # Create environment using factory pattern
+        if self.env_type == "ppo":
+            self.current_round_env = PPOSlowRLEnvironment()
+        elif self.env_type == "dqn":
+            self.current_round_env = DQNSlowRLEnvironment()
+        else:
+            raise ValueError(f"Unsupported environment type: {self.env_type}")
+        
+        # Get death detection threshold from environment config
+        death_threshold = self.current_round_env.observation_window * self.current_round_env.death_detection_ratio
         death_threshold = max(2, int(death_threshold))
-        temp_env.close()
         
         # Start next round
         if not self.match_manager.start_next_round(zero_threshold=death_threshold):
             raise RuntimeError("Failed to start round")
         
-        # Create fresh SlowRLEnvironment for this round
-        if self.current_round_env:
-            self.current_round_env.close()
-        
-        self.current_round_env = SlowRLEnvironment()
+        # Environment already created above using factory pattern
+        print(f"   Round {self.match_manager.current_round_number} environment ready ({self.env_type.upper()})")
     
     def _complete_current_round(self) -> Optional[RoundResult]:
         """Complete the current round using MatchManager"""
@@ -217,7 +236,7 @@ class MatchRLEnvironment:
         # Let MatchManager handle round completion
         return self.match_manager._complete_current_round(final_state)
     
-    def _create_match_state(self, round_state: np.ndarray) -> MatchRLState:
+    def _create_match_state(self, round_state: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]) -> MatchRLState:
         """Create MatchRLState from current round state and match context"""
         stats = self.match_manager.stats
         current_round = self.match_manager.current_round_number
@@ -269,20 +288,16 @@ class MatchRLEnvironment:
         
         self.match_results.append(match_result)
     
-    def _state_to_array(self, match_state: MatchRLState) -> np.ndarray:
+    def _match_state_to_output(self, match_state: MatchRLState) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
         """
-        Convert MatchRLState to numpy array for RL agent
+        Convert MatchRLState to output format for RL agent.
         
-        State features:
-        - Round state features (from SlowRLEnvironment): 11 features
-        - Match context features: 8 features
-        Total: 19 features
+        Returns:
+            For PPO: np.ndarray (flat features + match context)
+            For DQN: Tuple[np.ndarray, np.ndarray] (screenshots, health_history + match context)
         """
-        # Start with round state features
-        state_features = list(match_state.round_state)
-        
-        # Add match context features
-        state_features.extend([
+        # Create match context features
+        match_features = np.array([
             float(match_state.current_round),           # Current round number
             float(match_state.p1_rounds_won),           # P1 rounds won
             float(match_state.p2_rounds_won),           # P2 rounds won
@@ -291,13 +306,33 @@ class MatchRLEnvironment:
             float(match_state.is_final_round_possible), # 1.0 if final round possible
             float(match_state.match_point_p1),          # 1.0 if P1 match point
             float(match_state.match_point_p2),          # 1.0 if P2 match point
-        ])
+        ], dtype=np.float32)
         
-        return np.array(state_features).astype(np.float32)
+        if self.env_type == "ppo":
+            # PPO: Flat vector input, concatenate match features
+            return np.concatenate([match_state.round_state, match_features]).astype(np.float32)
+        else:
+            # DQN: Tuple input (screenshots, health_history)
+            screenshots, health_history = match_state.round_state
+            
+            # Extend health history with match features
+            # Shape: (health_history_length, N) → (health_history_length, N + 8)
+            extended_health = np.zeros((health_history.shape[0], health_history.shape[1] + 8), dtype=np.float32)
+            extended_health[:, :health_history.shape[1]] = health_history  # Original health data
+            
+            # Add match features to each frame (broadcast)
+            extended_health[:, health_history.shape[1]:] = match_features[np.newaxis, :]  # Broadcast to all frames
+            
+            return screenshots, extended_health
     
     def get_observation_space_size(self) -> int:
         """Get size of observation space for RL agent"""
-        return 19  # 11 round features + 8 match features
+        if self.env_type == "ppo":
+            base_size = 11  # Round features from PPO environment
+            return base_size + 8  # + 8 match features = 19 total
+        else:
+            # DQN uses tuple output, return base size for compatibility
+            return self.current_round_env.get_observation_space_size() if self.current_round_env else 0
     
     def get_action_space_size(self) -> int:
         """Get size of action space for RL agent"""
