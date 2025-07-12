@@ -33,7 +33,8 @@ class InteractiveDQNArcadeTrainer:
                  models_dir: str = "models",
                  frame_stack: int = 8,
                  img_size: Tuple[int, int] = (84, 84),
-                 health_history_length: int = 15,
+                 health_history_length: int = 8,
+                 num_health_features: int = 15,
                  lr: float = 1e-4,
                  epsilon_start: float = 1.0,
                  epsilon_end: float = 0.1,
@@ -62,6 +63,7 @@ class InteractiveDQNArcadeTrainer:
             frame_stack=frame_stack,
             img_size=img_size,
             health_history_length=health_history_length,
+            num_health_features=num_health_features,
             lr=lr,
             epsilon_start=epsilon_start,
             epsilon_end=epsilon_end,
@@ -95,7 +97,8 @@ class InteractiveDQNArcadeTrainer:
         print(f"   Arcade: {arcade_opponents} opponents")
         print(f"   Environment: DQN (hybrid visual + health)")
         print(f"   Screenshot input: {frame_stack} × {img_size}")
-        print(f"   Health features: {health_history_length} (4 health + 8 match + 3 arcade)")
+        print(f"   Health history: {health_history_length} timesteps × {num_health_features} features")
+        print(f"   Feature breakdown: 4 health + 8 match + 3 arcade = {num_health_features} total")
         print(f"   State dim: {self.env.get_observation_space_size()}")
         print(f"   Action dim: {self.env.get_action_space_size()}")
         print(f"   Models dir: {models_dir}")
@@ -489,7 +492,8 @@ def main():
         arcade_opponents=99,     # Large number for continuous training
         frame_stack=8,           # 8 screenshot frames
         img_size=(84, 84),       # 84x84 screenshots for speed
-        health_history_length=15, # 15 features: 4 health + 8 match + 3 arcade
+        health_history_length=8,  # 8 timesteps
+        num_health_features=15,   # 15 features per timestep (4 health + 8 match + 3 arcade)
         lr=1e-4,                 # Conservative learning rate
         epsilon_decay=100000,    # Long exploration phase
         replay_capacity=200000,  # Large replay buffer for arcade

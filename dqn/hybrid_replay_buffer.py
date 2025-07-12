@@ -17,7 +17,7 @@ class HybridReplayBuffer:
     
     Stores transitions with:
     - Stacked screenshot frames (frame_stack, height, width)
-    - Health history (health_history_length, 4)
+    - Health history (health_history_length, num_health_features)
     - Actions, rewards, dones
     
     Key Features:
@@ -31,7 +31,8 @@ class HybridReplayBuffer:
                  capacity: int = 50000,
                  frame_stack: int = 8,
                  img_size: Tuple[int, int] = (168, 168),
-                 health_history_length: int = 8):
+                 health_history_length: int = 8,
+                 num_health_features: int = 4):
         """
         Initialize hybrid replay buffer.
         
@@ -40,11 +41,13 @@ class HybridReplayBuffer:
             frame_stack: Number of consecutive frames to stack
             img_size: Size of preprocessed frames (height, width)
             health_history_length: Number of health frames to track
+            num_health_features: Number of features per health timestep
         """
         self.capacity = capacity
         self.frame_stack = frame_stack
         self.img_height, self.img_width = img_size
         self.health_history_length = health_history_length
+        self.num_health_features = num_health_features
         
         # Screenshot storage (memory efficient uint8)
         self.screenshots = np.zeros(
@@ -58,11 +61,11 @@ class HybridReplayBuffer:
         
         # Health history storage
         self.health_history = np.zeros(
-            (capacity, health_history_length, 4), 
+            (capacity, health_history_length, num_health_features), 
             dtype=np.float32
         )
         self.next_health_history = np.zeros(
-            (capacity, health_history_length, 4), 
+            (capacity, health_history_length, num_health_features), 
             dtype=np.float32
         )
         
@@ -78,7 +81,7 @@ class HybridReplayBuffer:
         
         # Calculate memory usage
         screenshots_mb = (2 * capacity * frame_stack * self.img_height * self.img_width) / (1024**2)
-        health_mb = (2 * capacity * health_history_length * 4 * 4) / (1024**2)  # 4 bytes per float32
+        health_mb = (2 * capacity * health_history_length * num_health_features * 4) / (1024**2)  # 4 bytes per float32
         other_mb = (capacity * (4 + 4 + 1)) / (1024**2)  # action + reward + done
         total_mb = screenshots_mb + health_mb + other_mb
         
@@ -101,16 +104,16 @@ class HybridReplayBuffer:
         
         Args:
             screenshots: Current stacked screenshots (frame_stack, height, width) as float32 [0,1]
-            health_history: Current health history (health_history_length, 4) as float32
+            health_history: Current health history (health_history_length, num_health_features) as float32
             action: Action taken (0 to num_actions-1)
             reward: Reward received
             next_screenshots: Next stacked screenshots (frame_stack, height, width) as float32 [0,1]
-            next_health_history: Next health history (health_history_length, 4) as float32
+            next_health_history: Next health history (health_history_length, num_health_features) as float32
             done: Whether episode ended
         """
         # Validate input shapes
         expected_screenshot_shape = (self.frame_stack, self.img_height, self.img_width)
-        expected_health_shape = (self.health_history_length, 4)
+        expected_health_shape = (self.health_history_length, self.num_health_features)
         
         assert screenshots.shape == expected_screenshot_shape, \
             f"Screenshots shape {screenshots.shape} doesn't match expected {expected_screenshot_shape}"
@@ -185,7 +188,7 @@ class HybridReplayBuffer:
     def get_memory_usage(self) -> dict:
         """Get detailed memory usage information"""
         screenshots_mb = (2 * self.capacity * self.frame_stack * self.img_height * self.img_width) / (1024**2)
-        health_mb = (2 * self.capacity * self.health_history_length * 4 * 4) / (1024**2)
+        health_mb = (2 * self.capacity * self.health_history_length * self.num_health_features * 4) / (1024**2)
         other_mb = (self.capacity * (4 + 4 + 1)) / (1024**2)
         total_mb = screenshots_mb + health_mb + other_mb
         

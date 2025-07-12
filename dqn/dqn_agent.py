@@ -41,6 +41,7 @@ class DQNAgent:
                  frame_stack: int = 4,
                  img_size: Tuple[int, int] = (168, 168),
                  health_history_length: int = 4,
+                 num_health_features: int = 4,
                  lr: float = 1e-4,
                  epsilon_start: float = 1.0,
                  epsilon_end: float = 0.1,
@@ -55,6 +56,7 @@ class DQNAgent:
             frame_stack: Number of screenshot frames to stack
             img_size: Size of preprocessed screenshots (height, width)
             health_history_length: Number of health frames to track
+            num_health_features: Number of features per health timestep
             lr: Learning rate
             epsilon_start: Initial exploration rate
             epsilon_end: Final exploration rate
@@ -66,6 +68,7 @@ class DQNAgent:
         self.frame_stack = frame_stack
         self.img_size = img_size
         self.health_history_length = health_history_length
+        self.num_health_features = num_health_features
         
         # Exploration parameters
         self.epsilon_start = epsilon_start
@@ -103,13 +106,14 @@ class DQNAgent:
             capacity=replay_capacity,
             frame_stack=frame_stack,
             img_size=img_size,
-            health_history_length=health_history_length
+            health_history_length=health_history_length,
+            num_health_features=num_health_features
         )
         
         print(f"🤖 DQN Agent initialized:")
         print(f"   Actions: {num_actions}")
         print(f"   Screenshot input: {frame_stack} × {img_size}")
-        print(f"   Health history: {health_history_length} frames")
+        print(f"   Health history: {health_history_length} frames × {num_health_features} features")
         print(f"   Exploration: ε {epsilon_start:.1f} → {epsilon_end:.1f} over {epsilon_decay} steps")
         print(f"   Replay buffer: {replay_capacity} transitions")
         print(f"   Target update: every {target_update_frequency} steps")
