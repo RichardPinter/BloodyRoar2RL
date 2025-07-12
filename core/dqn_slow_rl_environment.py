@@ -43,8 +43,11 @@ class DQNSlowRLEnvironment(BaseSlowRLEnvironment):
             observation_window_seconds: How many seconds to observe (1 screenshot per second)
             window_title: Game window title for screenshot capture
         """
-        # Initialize base environment with configurable observation window
-        super().__init__(observation_window=observation_window_seconds)
+        # Initialize base environment
+        super().__init__()
+        
+        # Override the hardcoded observation window with configurable value
+        self.observation_window = observation_window_seconds
         
         self.frame_stack_size = frame_stack_size
         self.img_size = img_size
