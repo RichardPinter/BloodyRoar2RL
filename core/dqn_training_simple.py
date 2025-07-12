@@ -171,9 +171,13 @@ class DQNTrainer:
                 total_steps += 1
                 steps_since_training += 1
                 
+                # Debug: Show training conditions every 4 steps
+                if steps_since_training >= 4:
+                    print(f"    Debug: episode={episode+1}, buffer_size={self.agent.replay_buffer.size}, steps_since_training={steps_since_training}")
+                
                 # Train the agent every 4 steps (if enough experience and past warmup period)
                 if (episode >= training_start_episode and 
-                    self.agent.replay_buffer.size() >= min_replay_size and
+                    self.agent.replay_buffer.size >= min_replay_size and
                     steps_since_training >= 4):
                     
                     if not training_started:
@@ -209,7 +213,7 @@ class DQNTrainer:
             print(f"     Length: {episode_length} steps (Avg: {avg_length:.1f})")
             print(f"     Epsilon: {current_epsilon:.3f}")
             print(f"     Total Steps: {total_steps:,}")
-            print(f"     Replay Size: {self.agent.replay_buffer.size():,}")
+            print(f"     Replay Size: {self.agent.replay_buffer.size:,}")
             
             if training_started and loss_count > 0:
                 print(f"     Avg Loss: {avg_loss:.4f}")
@@ -266,7 +270,7 @@ class DQNTrainer:
         # Training progress
         print(f"Progress:")
         print(f"  Total steps: {total_steps:,}")
-        print(f"  Replay buffer: {self.agent.replay_buffer.size():,}")
+        print(f"  Replay buffer: {self.agent.replay_buffer.size:,}")
         print(f"  Training active: {'Yes' if training_started else 'No'}")
         
         # Exploration
@@ -378,8 +382,8 @@ def main():
         print(f"\\n🚀 Starting training...")
         trainer.train(
             num_episodes=300,        # Extended training for DQN
-            min_replay_size=2000,    # Collect good amount before training
-            training_start_episode=20, # Warmup period
+            min_replay_size=100,     # Start training after 100 transitions (was 2000)
+            training_start_episode=1, # Start training from episode 1 (was 20)
             log_interval=20          # Log every 20 episodes
         )
         
