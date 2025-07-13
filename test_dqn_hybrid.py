@@ -362,26 +362,24 @@ def test_q_value_learning():
         test_screenshots = np.random.rand(8, 84, 84).astype(np.float32)
         test_health = np.random.rand(8, 15).astype(np.float32)
         
-        # Get Q-values before and after training (using same input)
+        # Get Q-values from trained network
         agent.q_network.eval()
         with torch.no_grad():
             screenshots_tensor = torch.FloatTensor(test_screenshots).unsqueeze(0)
             health_tensor = torch.FloatTensor(test_health).unsqueeze(0)
             
-            # Reset network to initial state temporarily
-            agent.q_network.load_state_dict(agent.target_network.state_dict())
-            initial_q_values = agent.q_network(screenshots_tensor, health_tensor).squeeze().numpy()
+            # Get Q-values from trained network
+            trained_q_values = agent.q_network(screenshots_tensor, health_tensor).squeeze().numpy()
             
-            # Load trained weights back
-            agent.target_network.load_state_dict(agent.q_network.state_dict())
-            final_q_values = agent.q_network(screenshots_tensor, health_tensor).squeeze().numpy()
+            # Get Q-values from target network (less trained)
+            target_q_values = agent.target_network(screenshots_tensor, health_tensor).squeeze().numpy()
         
-        q_value_change = np.abs(final_q_values - initial_q_values).mean()
+        q_value_change = np.abs(trained_q_values - target_q_values).mean()
         
         print(f"  🎯 Q-value analysis:")
         print(f"     Q-value change: {q_value_change:.6f}")
-        print(f"     Initial Q-values: {initial_q_values[:3]}")
-        print(f"     Final Q-values: {final_q_values[:3]}")
+        print(f"     Target Q-values: {target_q_values[:3]}")
+        print(f"     Trained Q-values: {trained_q_values[:3]}")
         
         # Verify learning occurred
         learning_occurred = (
