@@ -2,7 +2,10 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional
-from game_state import GameState
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from detection.game_state import GameState
 
 @dataclass
 class NormalizationConfig:
