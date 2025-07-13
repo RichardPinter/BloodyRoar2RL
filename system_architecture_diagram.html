@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bloody Roar 2 RL System Architecture</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { text-align: center; color: #333; }
+        #diagram { text-align: center; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🎮 Bloody Roar 2 RL Training System Architecture</h1>
+    
+    <div id="diagram">
+        <div class="mermaid">
+graph TB
+    %% Game Layer
+    subgraph "🎮 Game Layer"
+        BH[BizHawk Emulator]
+        BR2[Bloody Roar 2 ROM]
+        LUA[Lua Input Script]
+        AF[actions.txt File]
+        
+        BH --> BR2
+        AF --> LUA
+        LUA --> BH
+    end
+    
+    %% Detection Layer
+    subgraph "👁️ Detection Layer"
+        WC[WindowCapture<br/>📺 Screen Capture]
+        HD[HealthDetector<br/>💚 Yellow Pixel Detection]
+        FD[FighterDetector<br/>🥊 YOLOv8n Object Detection]
+        
+        WC --> HD
+        WC --> FD
+    end
+    
+    %% State Management Layer
+    subgraph "📊 State Management"
+        HSM[HybridStateManager<br/>🖼️ Screenshot + Health History]
+        RSM[RoundStateMonitor<br/>⚔️ Round Win/Loss Detection]
+        SH[StateHistory<br/>📈 Temporal Features]
+        SN[StateNormalizer<br/>🎯 Feature Engineering]
+        
+        HD --> RSM
+        HD --> HSM
+        WC --> HSM
+        HD --> SH
+        FD --> SH
+        SH --> SN
+    end
+    
+    %% Environment Layer
+    subgraph "🌍 RL Environment Hierarchy"
+        BASE[BaseSlowRLEnvironment<br/>⏱️ 8-second observation windows<br/>🎯 Health-based rewards]
+        
+        subgraph "Algorithm-Specific Environments"
+            PPO_ENV[PPOSlowRLEnvironment<br/>📋 11 feature vector<br/>Position + Health + Movement]
+            DQN_ENV[DQNSlowRLEnvironment<br/>🖼️ Screenshots (8×168×168)<br/>➕ Health History (8×4)]
+        end
+        
+        MATCH[MatchRLEnvironment<br/>🏆 Best-of-3 Management<br/>📊 Match Context Features]
+        ARCADE[ArcadeRLEnvironment<br/>🎪 8 Opponent Progression<br/>🔄 Checkpoint System]
+        
+        BASE --> PPO_ENV
+        BASE --> DQN_ENV
+        PPO_ENV --> MATCH
+        DQN_ENV --> MATCH
+        MATCH --> ARCADE
+    end
+    
+    %% Training Layer
+    subgraph "🧠 Training Algorithms"
+        subgraph "PPO Training"
+            PPO_AGENT[PPO Agent<br/>🎭 Actor-Critic<br/>🔄 Policy Optimization]
+            PPO_NET[PPO Networks<br/>📊 Feature MLP<br/>🎯 Action/Value Heads]
+            PPO_BUFFER[PPO Buffer<br/>💾 Episode Trajectories<br/>📈 Advantage Estimation]
+        end
+        
+        subgraph "DQN Training"
+            DQN_AGENT[DQN Agent<br/>🎯 Q-Learning<br/>🎲 ε-greedy Exploration]
+            DQN_NET[DQN Vision Network<br/>🖼️ CNN (Screenshots)<br/>🧠 MLP (Health History)<br/>🔗 Feature Fusion]
+            DQN_BUFFER[Hybrid Replay Buffer<br/>💾 50K Transitions<br/>🖼️ Screenshot Storage]
+            TARGET[Target Network<br/>🎯 Stable Q-targets<br/>🔄 Updated every 1000 steps]
+        end
+    end
+    
+    %% Action Control
+    subgraph "🎮 Action Control"
+        GC[GameController<br/>⌨️ 10 Discrete Actions<br/>📁 File-based Communication]
+        ACTIONS["🕹️ Actions:<br/>left, right, jump, squat<br/>kick, punch, special, throw<br/>block, transform"]
+    end
+    
+    %% Data Flow Connections
+    BH -.->|"Screen Pixels"| WC
+    
+    RSM --> BASE
+    SN --> PPO_ENV
+    HSM --> DQN_ENV
+    
+    PPO_ENV --> PPO_AGENT
+    DQN_ENV --> DQN_AGENT
+    
+    PPO_AGENT --> PPO_NET
+    PPO_AGENT --> PPO_BUFFER
+    
+    DQN_AGENT --> DQN_NET
+    DQN_AGENT --> DQN_BUFFER
+    DQN_NET --> TARGET
+    
+    PPO_AGENT --> GC
+    DQN_AGENT --> GC
+    GC --> AF
+    GC --> ACTIONS
+    
+    %% Hierarchical Game Structure
+    subgraph "🏗️ Game Hierarchy"
+        SUBROUND[Sub-round<br/>⚔️ Single fight until KO<br/>📊 1 RL Episode]
+        ROUND[Round<br/>🔄 Collection of sub-rounds<br/>📈 Training episodes]
+        GMATCH[Match<br/>🏆 Best-of-3 rounds<br/>🎯 Win 2 to advance]
+        ARCPROG[Arcade Mode<br/>🎪 8 consecutive matches<br/>🔄 Checkpoint on loss]
+        
+        SUBROUND --> ROUND
+        ROUND --> GMATCH
+        GMATCH --> ARCPROG
+    end
+    
+    %% Reward System
+    subgraph "🎁 Reward System"
+        HEALTH_REWARD["💚 Health Rewards<br/>+0.1 × damage_dealt<br/>-0.1 × damage_taken"]
+        OUTCOME_BONUS["🏆 Outcome Bonuses<br/>+10.0 for wins<br/>-10.0 for losses"]
+        
+        HD --> HEALTH_REWARD
+        RSM --> OUTCOME_BONUS
+        HEALTH_REWARD --> BASE
+        OUTCOME_BONUS --> BASE
+    end
+    
+    %% Training Loop
+    subgraph "🔄 Training Loop"
+        COLLECT[Data Collection<br/>🎮 Environment Interaction<br/>💾 Experience Storage]
+        UPDATE[Network Updates<br/>🧠 Gradient Descent<br/>📊 Loss Optimization]
+        EVAL[Evaluation<br/>📈 Performance Tracking<br/>💾 Checkpoint Saving]
+        
+        COLLECT --> UPDATE
+        UPDATE --> EVAL
+        EVAL --> COLLECT
+    end
+    
+    PPO_BUFFER --> UPDATE
+    DQN_BUFFER --> UPDATE
+    ARCADE --> COLLECT
+    
+    %% Styling
+    classDef gameLayer fill:#e1f5fe
+    classDef detectionLayer fill:#f3e5f5
+    classDef envLayer fill:#e8f5e8
+    classDef trainingLayer fill:#fff3e0
+    classDef actionLayer fill:#fce4ec
+    
+    class BH,BR2,LUA,AF gameLayer
+    class WC,HD,FD detectionLayer
+    class BASE,PPO_ENV,DQN_ENV,MATCH,ARCADE,HSM,RSM,SH,SN envLayer
+    class PPO_AGENT,PPO_NET,PPO_BUFFER,DQN_AGENT,DQN_NET,DQN_BUFFER,TARGET trainingLayer
+    class GC,ACTIONS actionLayer
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+
+    <div style="margin-top: 30px; padding: 20px; background-color: #f5f5f5; border-radius: 5px;">
+        <h2>📋 System Overview</h2>
+        <ul>
+            <li><strong>🎮 Game Layer:</strong> BizHawk emulator with Lua script communication</li>
+            <li><strong>👁️ Detection Layer:</strong> Real-time health and fighter position detection</li>
+            <li><strong>📊 State Management:</strong> Converts raw game data into RL-ready observations</li>
+            <li><strong>🌍 Environment Hierarchy:</strong> Sub-rounds → Rounds → Matches → Arcade</li>
+            <li><strong>🧠 Training:</strong> PPO (feature-based) and DQN (vision-based) algorithms</li>
+            <li><strong>🎮 Action Control:</strong> File-based communication back to game</li>
+        </ul>
+    </div>
+</body>
+</html>
