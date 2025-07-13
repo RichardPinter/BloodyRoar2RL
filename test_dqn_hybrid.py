@@ -273,6 +273,137 @@ def test_integration():
         traceback.print_exc()
         return False
 
+def test_q_value_learning():
+    """Test that Q-values actually change after training (CNN learns)"""
+    print("\n🎓 Testing Q-Value Learning...")
+    
+    try:
+        # Create agent
+        agent = DQNAgent(
+            num_actions=10,
+            frame_stack=8,
+            img_size=(84, 84),
+            health_history_length=8,
+            num_health_features=15,
+            replay_capacity=1000
+        )
+        
+        # Create test data
+        screenshots = np.random.rand(8, 84, 84).astype(np.float32)
+        health_history = np.random.rand(8, 15).astype(np.float32)
+        
+        # Get initial Q-values (before training)
+        initial_action = agent.select_action(screenshots, health_history)
+        
+        # Store some weights to check they change
+        initial_conv_weight = agent.q_network.conv1.weight.data.clone()
+        initial_fc_weight = agent.q_network.fc1.weight.data.clone()
+        
+        print(f"  📊 Initial state:")
+        print(f"     Initial action: {initial_action}")
+        print(f"     Conv1 weight sum: {initial_conv_weight.sum():.6f}")
+        print(f"     FC1 weight sum: {initial_fc_weight.sum():.6f}")
+        
+        # Fill replay buffer with training data
+        for i in range(100):  # More data for better training
+            next_screenshots = np.random.rand(8, 84, 84).astype(np.float32)
+            next_health_history = np.random.rand(8, 15).astype(np.float32)
+            
+            action = agent.select_action(screenshots, health_history)
+            reward = np.random.randn() * 10  # Larger rewards for clearer learning
+            
+            agent.store_transition(
+                screenshots=screenshots,
+                health_history=health_history,
+                action=action,
+                reward=reward,
+                next_screenshots=next_screenshots,
+                next_health_history=next_health_history,
+                done=(i % 20 == 19)
+            )
+            
+            # Update for next iteration
+            screenshots = next_screenshots
+            health_history = next_health_history
+        
+        print(f"  ✅ Stored {agent.replay_buffer.size} training transitions")
+        
+        # Perform multiple training updates
+        total_loss = 0
+        num_updates = 10
+        
+        for i in range(num_updates):
+            loss, epsilon = agent.update(batch_size=32)
+            total_loss += loss
+            if i == 0:
+                first_loss = loss
+            if i == num_updates - 1:
+                final_loss = loss
+        
+        avg_loss = total_loss / num_updates
+        print(f"  🧠 Training completed:")
+        print(f"     Updates: {num_updates}")
+        print(f"     First loss: {first_loss:.6f}")
+        print(f"     Final loss: {final_loss:.6f}")
+        print(f"     Average loss: {avg_loss:.6f}")
+        
+        # Check if weights changed
+        final_conv_weight = agent.q_network.conv1.weight.data
+        final_fc_weight = agent.q_network.fc1.weight.data
+        
+        conv_weight_change = (final_conv_weight - initial_conv_weight).abs().mean().item()
+        fc_weight_change = (final_fc_weight - initial_fc_weight).abs().mean().item()
+        
+        print(f"  📈 Weight changes:")
+        print(f"     Conv1 avg change: {conv_weight_change:.8f}")
+        print(f"     FC1 avg change: {fc_weight_change:.8f}")
+        
+        # Test if Q-values changed for same input
+        test_screenshots = np.random.rand(8, 84, 84).astype(np.float32)
+        test_health = np.random.rand(8, 15).astype(np.float32)
+        
+        # Get Q-values before and after training (using same input)
+        agent.q_network.eval()
+        with torch.no_grad():
+            screenshots_tensor = torch.FloatTensor(test_screenshots).unsqueeze(0)
+            health_tensor = torch.FloatTensor(test_health).unsqueeze(0)
+            
+            # Reset network to initial state temporarily
+            agent.q_network.load_state_dict(agent.target_network.state_dict())
+            initial_q_values = agent.q_network(screenshots_tensor, health_tensor).squeeze().numpy()
+            
+            # Load trained weights back
+            agent.target_network.load_state_dict(agent.q_network.state_dict())
+            final_q_values = agent.q_network(screenshots_tensor, health_tensor).squeeze().numpy()
+        
+        q_value_change = np.abs(final_q_values - initial_q_values).mean()
+        
+        print(f"  🎯 Q-value analysis:")
+        print(f"     Q-value change: {q_value_change:.6f}")
+        print(f"     Initial Q-values: {initial_q_values[:3]}")
+        print(f"     Final Q-values: {final_q_values[:3]}")
+        
+        # Verify learning occurred
+        learning_occurred = (
+            conv_weight_change > 1e-6 and  # Weights changed significantly
+            fc_weight_change > 1e-6 and    # FC weights also changed
+            q_value_change > 1e-4           # Q-values changed meaningfully
+        )
+        
+        if learning_occurred:
+            print(f"  ✅ Learning verified! CNN is updating and learning!")
+            return True
+        else:
+            print(f"  ❌ Learning not detected. Weights or Q-values didn't change enough.")
+            print(f"     This might indicate frozen weights or learning issues.")
+            return False
+        
+    except Exception as e:
+        print(f"  ❌ Q-value learning test failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def main():
     """Run all tests"""
     print("🧪 DQN HYBRID ARCHITECTURE QUICK TEST")
@@ -284,7 +415,8 @@ def main():
         ("Vision Network", test_vision_network),
         ("Replay Buffer", test_replay_buffer),
         ("DQN Agent", test_dqn_agent),
-        ("Integration", test_integration)
+        ("Integration", test_integration),
+        ("Q-Value Learning", test_q_value_learning)
     ]
     
     results = {}
