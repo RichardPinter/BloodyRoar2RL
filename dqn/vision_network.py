@@ -15,9 +15,12 @@ from typing import Tuple
 
 class DQNVisionNetwork(nn.Module):
     """
-    Convolutional Neural Network for processing game screenshots in DQN.
+    Hybrid Neural Network for processing game screenshots and health history in DQN.
     
     Architecture optimized for:
+    - CNN for visual processing (screenshots)
+    - FC layers for health/context processing
+    - Combined feature fusion for Q-value prediction
     - CPU training (smaller filter counts)
     - Fighting game patterns (character positions, health bars)
     - 1 FPS gameplay (temporal patterns across 8 frames)
@@ -27,7 +30,9 @@ class DQNVisionNetwork(nn.Module):
                  frame_stack: int = 8,
                  img_size: Tuple[int, int] = (168, 168),
                  num_actions: int = 10,
-                 hidden_size: int = 256):
+                 hidden_size: int = 256,
+                 health_history_length: int = 8,
+                 num_health_features: int = 4):
         """
         Initialize CNN vision network.
         
@@ -36,6 +41,8 @@ class DQNVisionNetwork(nn.Module):
             img_size: Input image dimensions (height, width)
             num_actions: Number of possible actions
             hidden_size: Size of fully connected layer
+            health_history_length: Number of health timesteps
+            num_health_features: Number of features per health timestep
         """
         super(DQNVisionNetwork, self).__init__()
         
@@ -43,6 +50,8 @@ class DQNVisionNetwork(nn.Module):
         self.img_height, self.img_width = img_size
         self.num_actions = num_actions
         self.hidden_size = hidden_size
+        self.health_history_length = health_history_length
+        self.num_health_features = num_health_features
         
         # Convolutional layers for feature extraction
         self.conv1 = nn.Conv2d(
@@ -64,45 +73,64 @@ class DQNVisionNetwork(nn.Module):
         # Calculate size after convolutions for fully connected layer
         self.conv_output_size = self._calculate_conv_output_size()
         
-        # Fully connected layers for decision making
-        self.fc1 = nn.Linear(self.conv_output_size, hidden_size)
+        # Health processing layers
+        health_input_size = health_history_length * num_health_features
+        self.health_fc1 = nn.Linear(health_input_size, hidden_size // 2)
+        self.health_fc2 = nn.Linear(hidden_size // 2, hidden_size // 4)
+        
+        # Combined processing layers
+        combined_input_size = self.conv_output_size + (hidden_size // 4)
+        self.fc1 = nn.Linear(combined_input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, num_actions)
         
         # Initialize weights
         self._initialize_weights()
         
-        print(f"🧠 DQN Vision Network initialized:")
-        print(f"   Input: ({frame_stack}, {img_size[0]}, {img_size[1]})")
+        print(f"🧠 DQN Hybrid Vision Network initialized:")
+        print(f"   Screenshots: ({frame_stack}, {img_size[0]}, {img_size[1]})")
+        print(f"   Health history: ({health_history_length}, {num_health_features})")
         print(f"   Conv output size: {self.conv_output_size}")
-        print(f"   Hidden size: {hidden_size}")
+        print(f"   Health features: {health_input_size} → {hidden_size // 4}")
+        print(f"   Combined features: {combined_input_size} → {hidden_size}")
         print(f"   Output: {num_actions} Q-values")
         print(f"   Total parameters: {self._count_parameters():,}")
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, screenshots: torch.Tensor, health_history: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass through the network.
+        Forward pass through the hybrid network.
         
         Args:
-            x: Input tensor (batch_size, frame_stack, height, width)
+            screenshots: Screenshot tensor (batch_size, frame_stack, height, width)
+            health_history: Health history tensor (batch_size, health_history_length, num_health_features)
             
         Returns:
             Q-values for each action (batch_size, num_actions)
         """
-        # Validate input shape
-        expected_shape = (x.shape[0], self.frame_stack, self.img_height, self.img_width)
-        if x.shape != expected_shape:
-            raise ValueError(f"Input shape {x.shape} doesn't match expected {expected_shape}")
+        # Validate input shapes
+        expected_screenshot_shape = (screenshots.shape[0], self.frame_stack, self.img_height, self.img_width)
+        expected_health_shape = (health_history.shape[0], self.health_history_length, self.num_health_features)
         
-        # Convolutional feature extraction
-        x = F.relu(self.conv1(x))  # (batch, 16, 42, 42) for 168x168 input
-        x = F.relu(self.conv2(x))  # (batch, 32, 21, 21)
+        if screenshots.shape != expected_screenshot_shape:
+            raise ValueError(f"Screenshots shape {screenshots.shape} doesn't match expected {expected_screenshot_shape}")
+        if health_history.shape != expected_health_shape:
+            raise ValueError(f"Health history shape {health_history.shape} doesn't match expected {expected_health_shape}")
         
-        # Flatten spatial dimensions
-        x = x.view(x.size(0), -1)  # (batch, 32*21*21)
+        # Process screenshots through CNN
+        visual_features = F.relu(self.conv1(screenshots))  # (batch, 16, H, W)
+        visual_features = F.relu(self.conv2(visual_features))  # (batch, 32, H, W)
+        visual_features = visual_features.view(visual_features.size(0), -1)  # Flatten
         
-        # Fully connected layers
-        x = F.relu(self.fc1(x))    # (batch, hidden_size)
-        q_values = self.fc2(x)     # (batch, num_actions)
+        # Process health history through FC layers
+        health_features = health_history.view(health_history.size(0), -1)  # Flatten to (batch, health_length * features)
+        health_features = F.relu(self.health_fc1(health_features))
+        health_features = F.relu(self.health_fc2(health_features))
+        
+        # Combine visual and health features
+        combined_features = torch.cat([visual_features, health_features], dim=1)
+        
+        # Final processing to Q-values
+        x = F.relu(self.fc1(combined_features))
+        q_values = self.fc2(x)
         
         return q_values
     
@@ -133,36 +161,45 @@ class DQNVisionNetwork(nn.Module):
         """Count total trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
-    def predict_q_values(self, stacked_frames: np.ndarray) -> np.ndarray:
+    def predict_q_values(self, stacked_frames: np.ndarray, health_history: np.ndarray = None) -> np.ndarray:
         """
         Predict Q-values for a single state (convenience method).
         
         Args:
             stacked_frames: Numpy array (frame_stack, height, width) normalized to [0,1]
+            health_history: Numpy array (health_history_length, num_health_features) or None for zeros
             
         Returns:
             Q-values array (num_actions,)
         """
-        # Convert to tensor and add batch dimension
+        # Convert screenshots to tensor and add batch dimension
         if isinstance(stacked_frames, np.ndarray):
-            tensor_input = torch.FloatTensor(stacked_frames).unsqueeze(0)  # Add batch dim
+            screenshots_tensor = torch.FloatTensor(stacked_frames).unsqueeze(0)  # Add batch dim
         else:
-            tensor_input = stacked_frames.unsqueeze(0)
+            screenshots_tensor = stacked_frames.unsqueeze(0)
+        
+        # Handle health history
+        if health_history is None:
+            # Create dummy health history with zeros
+            health_history = np.zeros((self.health_history_length, self.num_health_features), dtype=np.float32)
+        
+        health_tensor = torch.FloatTensor(health_history).unsqueeze(0)  # Add batch dim
         
         # Forward pass
         self.eval()
         with torch.no_grad():
-            q_values = self.forward(tensor_input)
+            q_values = self.forward(screenshots_tensor, health_tensor)
         
         return q_values.squeeze(0).numpy()  # Remove batch dim and convert to numpy
     
-    def select_action(self, stacked_frames: np.ndarray, epsilon: float = 0.0) -> int:
+    def select_action(self, stacked_frames: np.ndarray, epsilon: float = 0.0, health_history: np.ndarray = None) -> int:
         """
         Select action using epsilon-greedy policy.
         
         Args:
             stacked_frames: Current state as stacked frames
             epsilon: Exploration probability (0 = greedy, 1 = random)
+            health_history: Health history array or None for zeros
             
         Returns:
             Selected action index
@@ -172,16 +209,17 @@ class DQNVisionNetwork(nn.Module):
             return np.random.randint(0, self.num_actions)
         else:
             # Greedy action selection
-            q_values = self.predict_q_values(stacked_frames)
+            q_values = self.predict_q_values(stacked_frames, health_history)
             return int(np.argmax(q_values))
     
-    def get_action_values_with_names(self, stacked_frames: np.ndarray, action_names: list = None) -> dict:
+    def get_action_values_with_names(self, stacked_frames: np.ndarray, action_names: list = None, health_history: np.ndarray = None) -> dict:
         """
         Get Q-values with human-readable action names.
         
         Args:
             stacked_frames: Current state
             action_names: List of action names (e.g., ['left', 'right', ...])
+            health_history: Health history array or None for zeros
             
         Returns:
             Dictionary mapping action names to Q-values
@@ -190,7 +228,7 @@ class DQNVisionNetwork(nn.Module):
             action_names = ['left', 'right', 'jump', 'squat', 'transform', 
                           'kick', 'punch', 'special', 'block', 'throw']
         
-        q_values = self.predict_q_values(stacked_frames)
+        q_values = self.predict_q_values(stacked_frames, health_history)
         
         return {name: float(q_val) for name, q_val in zip(action_names, q_values)}
 
@@ -239,15 +277,17 @@ class VisionNetworkTester:
         try:
             # Create dummy input batch
             batch_size = 4
-            dummy_input = torch.randn(batch_size, 4, 168, 168)
+            dummy_screenshots = torch.randn(batch_size, self.network.frame_stack, self.network.img_height, self.network.img_width)
+            dummy_health = torch.randn(batch_size, self.network.health_history_length, self.network.num_health_features)
             
             # Forward pass
             self.network.eval()
             with torch.no_grad():
-                output = self.network(dummy_input)
+                output = self.network(dummy_screenshots, dummy_health)
             
             print(f"✅ Forward pass successful")
-            print(f"   Input shape: {dummy_input.shape}")
+            print(f"   Screenshots shape: {dummy_screenshots.shape}")
+            print(f"   Health shape: {dummy_health.shape}")
             print(f"   Output shape: {output.shape}")
             print(f"   Expected output shape: ({batch_size}, {self.network.num_actions})")
             
@@ -277,23 +317,24 @@ class VisionNetworkTester:
         
         try:
             # Create dummy state
-            dummy_state = np.random.rand(4, 168, 168).astype(np.float32)
+            dummy_screenshots = np.random.rand(self.network.frame_stack, self.network.img_height, self.network.img_width).astype(np.float32)
+            dummy_health = np.random.rand(self.network.health_history_length, self.network.num_health_features).astype(np.float32)
             
             # Test Q-value prediction
-            q_values = self.network.predict_q_values(dummy_state)
+            q_values = self.network.predict_q_values(dummy_screenshots, dummy_health)
             print(f"✅ Q-value prediction: shape {q_values.shape}")
             print(f"   Q-values: {q_values}")
             
             # Test greedy action selection
-            action_greedy = self.network.select_action(dummy_state, epsilon=0.0)
+            action_greedy = self.network.select_action(dummy_screenshots, epsilon=0.0, health_history=dummy_health)
             print(f"✅ Greedy action: {action_greedy}")
             
             # Test random action selection
-            action_random = self.network.select_action(dummy_state, epsilon=1.0)
+            action_random = self.network.select_action(dummy_screenshots, epsilon=1.0, health_history=dummy_health)
             print(f"✅ Random action: {action_random}")
             
             # Test action values with names
-            action_dict = self.network.get_action_values_with_names(dummy_state)
+            action_dict = self.network.get_action_values_with_names(dummy_screenshots, health_history=dummy_health)
             print(f"✅ Action values with names:")
             for action, value in sorted(action_dict.items(), key=lambda x: x[1], reverse=True):
                 print(f"      {action}: {value:.3f}")
@@ -318,18 +359,19 @@ class VisionNetworkTester:
             import time
             
             # Test single inference time
-            dummy_state = np.random.rand(4, 168, 168).astype(np.float32)
+            dummy_screenshots = np.random.rand(self.network.frame_stack, self.network.img_height, self.network.img_width).astype(np.float32)
+            dummy_health = np.random.rand(self.network.health_history_length, self.network.num_health_features).astype(np.float32)
             
             # Warm up
             for _ in range(5):
-                self.network.predict_q_values(dummy_state)
+                self.network.predict_q_values(dummy_screenshots, dummy_health)
             
             # Time multiple inferences
             num_tests = 50
             start_time = time.time()
             
             for _ in range(num_tests):
-                q_values = self.network.predict_q_values(dummy_state)
+                q_values = self.network.predict_q_values(dummy_screenshots, dummy_health)
             
             end_time = time.time()
             avg_time = (end_time - start_time) / num_tests
