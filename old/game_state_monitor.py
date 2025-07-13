@@ -4,12 +4,16 @@ import numpy as np
 from typing import Optional, Tuple
 from dataclasses import dataclass
 
-from window_capture import WindowCapture
-from health_detector import HealthDetector
-from fighter_detector import FighterDetector
-from game_state import GameState, PlayerState
-from state_normalizer import StateNormalizer
-from state_history import StateHistory
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from detection.window_capture import WindowCapture
+from detection.health_detector import HealthDetector
+from detection.fighter_detector import FighterDetector
+from detection.game_state import GameState, PlayerState
+from detection.state_normalizer import StateNormalizer
+from detection.state_history import StateHistory
 
 class GameStateMonitor:
     """Main orchestrator that combines all detection systems"""
