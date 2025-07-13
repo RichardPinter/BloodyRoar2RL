@@ -196,8 +196,8 @@ def test_dqn_agent():
         
         # Test training update
         if agent.replay_buffer.size >= 32:
-            loss = agent.update(batch_size=32)
-            print(f"  ✅ Training update successful! Loss: {loss:.6f}")
+            loss, epsilon = agent.update(batch_size=32)
+            print(f"  ✅ Training update successful! Loss: {loss:.6f}, Epsilon: {epsilon:.3f}")
         
         return True
         
