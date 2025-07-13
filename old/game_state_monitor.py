@@ -12,7 +12,7 @@ from detection.window_capture import WindowCapture
 from detection.health_detector import HealthDetector
 from detection.fighter_detector import FighterDetector
 from detection.game_state import GameState, PlayerState
-from detection.state_normalizer import StateNormalizer
+from state_normalizer import StateNormalizer
 from detection.state_history import StateHistory
 
 class GameStateMonitor:
