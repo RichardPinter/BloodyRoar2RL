@@ -363,8 +363,8 @@ class InteractiveDQNArcadeTrainer:
                             self.training_active = True
                         
                         if steps_since_update >= update_interval:
-                            loss = self.agent.update(self.batch_size)
-                            if loss is not None:
+                            loss, epsilon = self.agent.update(self.batch_size)
+                            if loss is not None and loss > 0:
                                 episode_loss += loss
                                 loss_count += 1
                                 self.training_losses.append(loss)
