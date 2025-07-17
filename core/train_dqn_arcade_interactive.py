@@ -523,8 +523,8 @@ def main():
         # Start training
         trainer.train(
             max_episodes=2000,       # Long training session
-            min_replay_size=3000,    # Larger minimum for stability
-            training_start_episode=30, # Longer warmup for arcade
+            min_replay_size=100,    # Larger minimum for stability
+            training_start_episode=15, # Longer warmup for arcade
             update_interval=4        # Update every 4 steps
         )
         
