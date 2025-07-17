@@ -110,13 +110,6 @@ while true do
                 if execute_action(content) then
                     actions_processed = actions_processed + 1
                     
-                    -- Clear file immediately
-                    local clear_file = io.open(ACTIONS_FILE, "w")
-                    if clear_file then
-                        clear_file:write("")
-                        clear_file:close()
-                    end
-                    
                     -- Show performance stats every 100 actions
                     if actions_processed % 100 == 0 then
                         local elapsed = os.clock() - start_time
