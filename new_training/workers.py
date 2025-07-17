@@ -138,6 +138,7 @@ results     = []
 screenshots = []
 buffer      = ReplayBuffer(REPLAY_SIZE)
 stop_event  = threading.Event()
+ready_event = threading.Event()
 
 # ─── PRODUCER ────────────────────────────────────────────────────────────────
 def producer():
@@ -150,9 +151,33 @@ def producer():
             frame_q.put((frm.copy(), ts))
     logger.info("Producer stopped")
 
-# ─── CONSUMER ────────────────────────────────────────────────────────────────
+# ─── HEALTH MONITOR ─────────────────────────────────────────────────────────
+def health_monitor():
+    logger.info("HealthMonitor started")
+    min_health = 1.0
+    while not stop_event.is_set():
+        try:
+            frame, ts = frame_q.get(timeout=0.1)
+        except:
+            continue
+        # Compute health percentages for P1 and P2
+        mask1 = cv2.inRange(frame[slice_p1], LOWER_BGR, UPPER_BGR)
+        pct1 = cv2.countNonZero(mask1) / LEN_P1 * 100.0
+        mask2 = cv2.inRange(frame[slice_p2], LOWER_BGR, UPPER_BGR)
+        pct2 = cv2.countNonZero(mask2) / LEN_P2 * 100.0
+        # Log health data for CSV
+        results.append((ts, pct1, pct2))
+        # Signal when round starts (health above threshold)
+        if not ready_event.is_set() and pct1 > min_health and pct2 > min_health:
+            logger.info(f"New round detected at {ts:.3f}s (P1={pct1:.1f}%, P2={pct2:.1f}%)")
+            ready_event.set()
+        frame_q.task_done()
+    logger.info("HealthMonitor stopped")
+
+# ─── CONSUMER"}]} ────────────────────────────────────────────────────────────────
 def consumer():
-    logger.info("Consumer started")
+    logger.info("Consumer started, waiting for new round...")
+    ready_event.wait()
     step = 0
     prev_stack = None
     prev_pct1 = prev_pct2 = 0.0
@@ -187,7 +212,6 @@ def consumer():
 
             with open(ACTIONS_FILE, "w") as f:
                 f.write(ACTIONS[act_idx])
-            # logger.info(f"[{ts:.3f}s] Wrote action '{ACTIONS[act_idx]}'")
 
             reward = ((prev_pct1 - pct1) - (prev_pct2 - pct2)
                       if prev_stack is not None else 0.0)
@@ -201,7 +225,6 @@ def consumer():
             step += 1
 
             prev_stack, prev_pct1, prev_pct2 = state, pct1, pct2
-
             frame_stack.popleft()
 
         if len(screenshots) < MAX_FRAMES:
@@ -210,7 +233,6 @@ def consumer():
         frame_q.task_done()
 
     logger.info("Consumer stopped")
-
 
 # ─── LEARNER ────────────────────────────────────────────────────────────────
 def learner():
@@ -247,25 +269,23 @@ def learner():
     learner_logger.info("Learner stopped")
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
-t_p = threading.Thread(target=producer, name="Producer", daemon=True)
-t_c = threading.Thread(target=consumer, name="Consumer", daemon=True)
-t_l = threading.Thread(target=learner, name="Learner", daemon=True)
+threads = []
+for fn, name in [(producer, "Producer"), (health_monitor, "HealthMonitor"), (consumer, "Consumer"), (learner, "Learner")]:
+    t = threading.Thread(target=fn, name=name, daemon=True)
+    threads.append(t)
 
 logger.info("Launching threads")
-t_p.start()
-t_c.start()
-t_l.start()
+for t in threads:
+    t.start()
 
 try:
     while True:
-        time.sleep(1)  # Keeps main thread alive indefinitely
+        time.sleep(1)
 except KeyboardInterrupt:
     stop_event.set()
 
-t_p.join()
-frame_q.join()
-t_c.join()
-t_l.join()
+for t in threads:
+    t.join()
 
 # save screenshots
 os.makedirs("screenshots", exist_ok=True)
@@ -280,5 +300,4 @@ with open(LOG_CSV, "w", newline="") as f:
     writer.writerow(["time_s", "p1_pct", "p2_pct"])
     writer.writerows(results)
 
-logger.info("Done: health CSV='%s', screenshots in ./screenshots/, actions in '%s'",
-            LOG_CSV, ACTIONS_FILE)
+logger.info("Done: health CSV='%s', screenshots in ./screenshots/, actions in '%s'", LOG_CSV, ACTIONS_FILE)

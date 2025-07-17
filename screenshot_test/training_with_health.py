@@ -4,7 +4,6 @@ import time
 import atexit
 import csv
 import threading
-import logging
 from queue import Queue
 from collections import deque
 import random
@@ -34,7 +33,6 @@ CNN_SIZE      = (84, 84)
 ACTIONS       = ["jump", "kick", "transform", "squat", "left", "right"]
 NUM_ACTIONS   = len(ACTIONS)
 DEVICE        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-ACTION_REPEAT = 4
 
 DURATION      = 60.0
 LOG_CSV       = "health_results.csv"
@@ -47,14 +45,7 @@ TARGET_SYNC   = 1000
 REPLAY_SIZE   = 10000
 
 # ─── LOGGING ───────────────────────────────────────────────────────────────
-logging.basicConfig(
-    format="%(asctime)s [%(threadName)s] %(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-    level=logging.INFO
-)
-logger        = logging.getLogger()
-learner_logger = logging.getLogger("Learner")
-learner_logger.setLevel(logging.INFO)
+# (disabled: no logging, only prints on death)
 
 # ─── DQN NET ───────────────────────────────────────────────────────────────
 class DQNNet(nn.Module):
@@ -82,7 +73,7 @@ class ReplayBuffer:
         self.actions     = np.zeros(size, dtype=np.int64)
         self.rewards     = np.zeros(size, dtype=np.float32)
         self.next_states = np.zeros((size, FRAME_STACK, *CNN_SIZE), dtype=np.float32)
-        self.dones       = np.zeros(size, dtype=np.bool_)
+        self.dones       = np.zeros(size, dtype=bool)
         self.max_size    = size
         self.ptr         = 0
         self.len         = 0
@@ -111,21 +102,19 @@ policy_net = DQNNet(FRAME_STACK, NUM_ACTIONS).to(DEVICE).train()
 target_net = DQNNet(FRAME_STACK, NUM_ACTIONS).to(DEVICE)
 target_net.load_state_dict(policy_net.state_dict())
 optimizer  = torch.optim.Adam(policy_net.parameters(), lr=LR)
-
-# warm-up
 with torch.no_grad():
-    dummy = torch.zeros(1, FRAME_STACK, *CNN_SIZE, device=DEVICE)
-    policy_net(dummy)
+    policy_net(torch.zeros(1, FRAME_STACK, *CNN_SIZE, device=DEVICE))
 
 # ─── DXCAM SETUP ────────────────────────────────────────────────────────────
 comtypes.CoInitialize()
+
+camera = dxcam.create(output_color="BGR")
+camera.start(target_fps=60, region=REGION, video_mode=True)
+
 def cleanup():
     camera.stop()
     comtypes.CoUninitialize()
 atexit.register(cleanup)
-
-camera = dxcam.create(output_color="BGR")
-camera.start(target_fps=60, region=REGION, video_mode=True)
 
 # ─── SHARED STATE ───────────────────────────────────────────────────────────
 slice_p1    = (slice(Y_HEALTH, Y_HEALTH+1), slice(X1_P1, X2_P1), slice(None))
@@ -138,134 +127,133 @@ results     = []
 screenshots = []
 buffer      = ReplayBuffer(REPLAY_SIZE)
 stop_event  = threading.Event()
+round_start = threading.Event()
+death_flag  = threading.Event()
 
 # ─── PRODUCER ────────────────────────────────────────────────────────────────
 def producer():
-    logger.info("Producer started")
     start = time.perf_counter()
     while not stop_event.is_set():
         frm = camera.get_latest_frame()
         if frm is not None:
             ts = time.perf_counter() - start
             frame_q.put((frm.copy(), ts))
-    logger.info("Producer stopped")
 
+# ─── HEALTH MONITOR ─────────────────────────────────────────────────────────
+def health_monitor():
+    round_started = False
+    alive_since = None  # timestamp when any player first detected alive
+    while not stop_event.is_set():
+        frame, ts = frame_q.get()
+        # measure health
+        mask1 = cv2.inRange(frame[slice_p1], LOWER_BGR, UPPER_BGR)
+        pct1 = cv2.countNonZero(mask1) / LEN_P1 * 100.0
+        mask2 = cv2.inRange(frame[slice_p2], LOWER_BGR, UPPER_BGR)
+        pct2 = cv2.countNonZero(mask2) / LEN_P2 * 100.0
+        results.append((time.time(), pct1, pct2))
+        # detect round start: any player alive > 0 for >0.5s
+        if not round_started:
+            if pct1 > 0.0 or pct2 > 0.0:
+                if alive_since is None:
+                    alive_since = time.time()
+                elif time.time() - alive_since >= 0.5:
+                    print("Round started!")
+                    round_started = True
+                    round_start.set()
+            else:
+                alive_since = None
+        # detect death after round start
+        if round_started:
+            if pct1 <= 0.0:
+                print("Player 1 died!")
+                death_flag.set()
+                break
+            if pct2 <= 0.0:
+                print("Player 2 died!")
+                death_flag.set()
+                break
+    # drain queue if exiting
+    while not frame_q.empty(): frame_q.get()
 # ─── CONSUMER ────────────────────────────────────────────────────────────────
 def consumer():
-    logger.info("Consumer started")
+    # wait for round to start
+    round_start.wait()
     step = 0
     prev_stack = None
     prev_pct1 = prev_pct2 = 0.0
     frame_count = 0
-
     open(ACTIONS_FILE, "w").close()
-
+    step = 0
+    prev_stack = None
+    prev_pct1 = prev_pct2 = 0.0
+    frame_count = 0
+    open(ACTIONS_FILE, "w").close()
     while not stop_event.is_set() or not frame_q.empty():
         frame, ts = frame_q.get()
-
         cv2.inRange(frame[slice_p1], LOWER_BGR, UPPER_BGR, mask1)
         pct1 = cv2.countNonZero(mask1) / LEN_P1 * 100.0
         cv2.inRange(frame[slice_p2], LOWER_BGR, UPPER_BGR, mask2)
         pct2 = cv2.countNonZero(mask2) / LEN_P2 * 100.0
-
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         img  = cv2.resize(gray, CNN_SIZE, interpolation=cv2.INTER_NEAREST)
         frame_stack.append(img.astype(np.float32) / 255.0)
-
         frame_count += 1
-
         if frame_count % FRAME_STACK == 0 and len(frame_stack) == FRAME_STACK:
             state = np.stack(frame_stack, 0)
             eps = max(0.01, 0.1 - 0.1 * (step / 10000))
-
             if random.random() < eps:
                 act_idx = random.randrange(NUM_ACTIONS)
             else:
                 with torch.no_grad():
                     qv = policy_net(torch.from_numpy(state).unsqueeze(0).to(DEVICE))
                 act_idx = int(qv.argmax(1).item())
-
             with open(ACTIONS_FILE, "w") as f:
                 f.write(ACTIONS[act_idx])
-            # logger.info(f"[{ts:.3f}s] Wrote action '{ACTIONS[act_idx]}'")
-
             reward = ((prev_pct1 - pct1) - (prev_pct2 - pct2)
                       if prev_stack is not None else 0.0)
-            buffer.add(
-                prev_stack if prev_stack is not None else state,
-                act_idx,
-                reward,
-                state,
-                False
-            )
+            buffer.add(prev_stack if prev_stack is not None else state, act_idx, reward, state, False)
             step += 1
-
             prev_stack, prev_pct1, prev_pct2 = state, pct1, pct2
-
             frame_stack.popleft()
-
         if len(screenshots) < MAX_FRAMES:
             screenshots.append(frame.copy())
-
         frame_q.task_done()
-
-    logger.info("Consumer stopped")
-
 
 # ─── LEARNER ────────────────────────────────────────────────────────────────
 def learner():
-    learner_logger.info("Learner started")
     update_count = 0
     while not stop_event.is_set():
         if buffer.len < BATCH_SIZE:
-            learner_logger.debug(f"Buffer {buffer.len}/{BATCH_SIZE}, waiting…")
             time.sleep(0.01)
             continue
-
-        if update_count == 0:
-            learner_logger.info(f"Buffer ready at {buffer.len} samples, starting training")
-
         states, actions, rewards, next_states, dones = buffer.sample(BATCH_SIZE)
         with torch.no_grad():
             next_q = target_net(next_states).max(1)[0]
             target = rewards + GAMMA * next_q * (1 - dones.float())
-
         q_vals = policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
         loss   = F.mse_loss(q_vals, target)
-
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         update_count += 1
-
-        learner_logger.debug(f"Step {update_count} loss={loss.item():.4f}")
-
         if update_count % TARGET_SYNC == 0:
             target_net.load_state_dict(policy_net.state_dict())
-            learner_logger.info(f"Synced target network @ step {update_count}")
-
-    learner_logger.info("Learner stopped")
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
-t_p = threading.Thread(target=producer, name="Producer", daemon=True)
-t_c = threading.Thread(target=consumer, name="Consumer", daemon=True)
-t_l = threading.Thread(target=learner, name="Learner", daemon=True)
+threads = []
+for fn in (producer, health_monitor, consumer, learner):
+    t = threading.Thread(target=fn, daemon=True)
+    threads.append(t)
 
-logger.info("Launching threads")
-t_p.start()
-t_c.start()
-t_l.start()
+for t in threads:
+    t.start()
 
-try:
-    while True:
-        time.sleep(1)  # Keeps main thread alive indefinitely
-except KeyboardInterrupt:
-    stop_event.set()
+# wait for death
+death_flag.wait()
+stop_event.set()
 
-t_p.join()
-frame_q.join()
-t_c.join()
-t_l.join()
+for t in threads:
+    t.join()
 
 # save screenshots
 os.makedirs("screenshots", exist_ok=True)
@@ -277,8 +265,5 @@ camera.stop()
 # write out health CSV
 with open(LOG_CSV, "w", newline="") as f:
     writer = csv.writer(f)
-    writer.writerow(["time_s", "p1_pct", "p2_pct"])
+    writer.writerow(["timestamp", "p1_pct", "p2_pct"] )
     writer.writerows(results)
-
-logger.info("Done: health CSV='%s', screenshots in ./screenshots/, actions in '%s'",
-            LOG_CSV, ACTIONS_FILE)
