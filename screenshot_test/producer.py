@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import time
 import atexit
@@ -31,10 +30,15 @@ UPPER_BGR   = np.array([30, 220, 245], dtype=np.uint8)
 # RL & CNN settings
 FRAME_STACK   = 4
 CNN_SIZE      = (84, 84)  # H×W for network input
-NUM_ACTIONS   = 6
+ACTIONS = [
+    "jump", "kick", "transform", "squat"
+]
+NUM_ACTIONS   = len(ACTIONS)
 DEVICE        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ACTION_REPEAT = 4  # Repeat/hold each action for 4 frames
+ACTIONS_FILE  = r"C:\Users\richa\Desktop\Personal\Uni\ShenLong\actions.txt"
 
-DURATION      = 1.0        # seconds to capture
+DURATION      = 5.0        # Increased duration for testing the sequence
 LOG_CSV       = "health_results.csv"
 MAX_SCREENSHOTS = 100      # Limit screenshots to save
 
@@ -66,16 +70,18 @@ with torch.no_grad():
 
 # ─── INITIALIZE COM & DXCAM ─────────────────────────────────────────────────
 comtypes.CoInitialize()
+
 def cleanup():
     camera.stop()
     comtypes.CoUninitialize()
+
 atexit.register(cleanup)
 
 camera = dxcam.create(output_color="BGR")
 camera.start(
-    target_fps=0,
+    target_fps=60,  # Aim for emulator-like rate
     region=REGION,
-    video_mode=False  # False: get_latest_frame() blocks until a new frame (screen change); avoids duplicates
+    video_mode=True  # Continuous high-rate capture (ignores change detection)
 )
 
 # Precompute slices and mask buffers
@@ -85,42 +91,42 @@ mask1    = np.empty((1, LEN_P1), dtype=np.uint8)
 mask2    = np.empty((1, LEN_P2), dtype=np.uint8)
 
 # Shared queue for frames (with timestamp)
-frame_q = Queue(maxsize=8)  # Buffer size: tune if you drop frames or lag
+frame_q = Queue(maxsize=16)  # Buffer for high-rate; increase if queue fills
 
 # Frame stack as deque for O(1) pops
 frame_stack = deque(maxlen=FRAME_STACK)
 
-# Storage for results and screenshot count
+# Storage for results and screenshot frames
 results = []
-screenshot_count = 0
+screenshot_frames = []  # up to MAX_SCREENSHOTS
 
-# Global running flag
-running = True
+# Thread-safe stop event
+stop_event = threading.Event()
 
-# ─── PRODUCER THREAD: Capture only on change, save screenshot if under limit, timestamp ──────────────
+# ─── PRODUCER THREAD: Pure capture, no IO ───────────────────────────────────
 def producer():
-    global running, screenshot_count
     start = time.perf_counter()
-    os.makedirs("screenshots", exist_ok=True)
-    while running:
-        frame = camera.get_latest_frame()  # Blocks until a *new* frame is available (screen update)
+    while not stop_event.is_set():
+        frame = camera.get_latest_frame()
         if frame is not None:
             ts = time.perf_counter() - start
-            # Save screenshot if under limit (every call here is a new frame)
-            if screenshot_count < MAX_SCREENSHOTS:
-                rgb = frame[..., ::-1]  # BGR→RGB
-                Image.fromarray(rgb).save(f"screenshots/frame_{screenshot_count:04d}.png")
-                screenshot_count += 1
-            # Queue the frame
-            frame_q.put((frame, ts))
+            frame_q.put((frame.copy(), ts))
 
-# ─── CONSUMER THREAD: Process health, stack, CNN, log ────────────────────────
+# ─── CONSUMER THREAD: Process health, stack, CNN, log; collect frames for saving
 def consumer():
-    global running
-    while running or not frame_q.empty():
-        frame, ts = frame_q.get()  # Blocks until a frame is available
+    frame_count = 0
+    action_index = 0
+    test_sequence = ACTIONS
+    current_action = test_sequence[0]
 
-        # --- Health detection ---
+    while not stop_event.is_set() or not frame_q.empty():
+        frame, ts = frame_q.get()
+
+        # Capture screenshot frames
+        if len(screenshot_frames) < MAX_SCREENSHOTS:
+            screenshot_frames.append(frame.copy())
+
+        # Health detection
         strip1 = frame[slice_p1]
         cv2.inRange(strip1, LOWER_BGR, UPPER_BGR, mask1)
         cnt1   = int(cv2.countNonZero(mask1))
@@ -131,46 +137,51 @@ def consumer():
         cnt2   = int(cv2.countNonZero(mask2))
         pct2   = cnt2 / LEN_P2 * 100.0
 
-        # Record health
         results.append((f"{ts:.3f}", f"{pct1:.1f}", f"{pct2:.1f}"))
 
-        # --- Preprocessing for CNN ---
+        # CNN preprocessing (optional)
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         img  = cv2.resize(gray, CNN_SIZE, interpolation=cv2.INTER_NEAREST)
         frame_stack.append(img.astype(np.float32) / 255.0)
 
-        # When we have enough frames, run CNN
+        frame_count += 1
+        # Action switching
         if len(frame_stack) == FRAME_STACK:
-            state = np.stack(frame_stack, axis=0)
-            tensor = torch.from_numpy(state).unsqueeze(0).to(DEVICE)
-            with torch.no_grad():
-                q = net(tensor)
-                if DEVICE.type == 'cuda':
-                    torch.cuda.synchronize()
-            action = int(q.argmax(dim=1).item())
-            print(f"[{ts:.3f}s] Health P1={pct1:.1f}% P2={pct2:.1f}% -> Action={action}")
-            frame_stack.popleft()  # O(1) pop from left
+            if frame_count % ACTION_REPEAT == 0:
+                action_index = (action_index + 1) % len(test_sequence)
+                current_action = test_sequence[action_index]
+                # Write action once when it changes
+                with open(ACTIONS_FILE, "w") as f:
+                    f.write(current_action)
+                print(f"[{ts:.3f}s] Health P1={pct1:.1f}% P2={pct2:.1f}% -> Action={current_action}")
 
-        frame_q.task_done()  # Signal we're done with this frame
+            frame_stack.popleft()
+        frame_q.task_done()
 
-# ─── MAIN: Start threads, run for duration, shutdown ─────────────────────────
-print(f"Starting capture for {DURATION}s...")
+# ─── MAIN: Start threads, run, shutdown ───────────────────────────────────────
 t_prod = threading.Thread(target=producer, daemon=True)
 t_cons = threading.Thread(target=consumer, daemon=True)
 t_prod.start()
 t_cons.start()
 
+print(f"Starting capture for {DURATION}s...")
 time.sleep(DURATION)
-running = False
+stop_event.set()
 
-# Wait for all queued frames to be processed
+# Wait for all frames to be processed
 frame_q.join()
 
-# ─── TEARDOWN & WRITE CSV ────────────────────────────────────────────────────
+# Save screenshots
+os.makedirs("screenshots", exist_ok=True)
+for i, frame in enumerate(screenshot_frames):
+    rgb = frame[..., ::-1]
+    Image.fromarray(rgb).save(f"screenshots/frame_{i:04d}.png")
+
+# Teardown and write CSV
 camera.stop()
 with open(LOG_CSV, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["time_s", "p1_pct", "p2_pct"])
     writer.writerows(results)
 
-print(f"Captured {len(results)} frames, saved {screenshot_count} screenshots, and processed CNN steps → {LOG_CSV}")
+print(f"Captured {len(results)} frames, saved {len(screenshot_frames)} screenshots, results → {LOG_CSV}")
