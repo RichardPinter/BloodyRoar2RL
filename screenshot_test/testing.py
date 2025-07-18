@@ -9,25 +9,56 @@ import numpy as np
 import cv2
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
-REGION      = (0, 0, 512, 338)            # BizHawk window at “size 2”
-Y_HEALTH    = 116                          # Y-row of the health bars
-X1_P1, X2_P1 = 73, 293                     # P1: 220 px wide
-X1_P2, X2_P2 = 355, 57                    # P2: also 220 px wide
-LEN_P1      = X2_P1 - X1_P1
-LEN_P2      = X2_P2 - X1_P2
+REGION = (0, 0, 512, 338)   # (left, top, width, height) for dxcam
 
-LOWER_BGR   = np.array([0,150,180], dtype=np.uint8)
-UPPER_BGR   = np.array([30,175,220], dtype=np.uint8)
+# Rectangles: (label, x1, y1, x2, y2)
+# Make sure x2 > x1 and y2 > y1 for each.
+RECTS = [
+    ("P1_R1", 270, 135, 278, 140),
+    ("P1_R2", 245, 135, 253, 140),
+    ("P2_R1", 373, 135, 381, 140),
+    ("P2_R2", 396, 135, 404, 140),
+]
+
+# Color range (BGR). Tweak as needed for your target color.
+LOWER_BGR = np.array([20, 20, 150], dtype=np.uint8)
+UPPER_BGR = np.array([30, 30, 220], dtype=np.uint8)
+
+TARGET_FPS = 30
+DISPLAY_INTERVAL = 0.1  # seconds between prints
 
 # ─── SETUP SCREEN CAPTURE ───────────────────────────────────────────────────
 comtypes.CoInitialize()
 camera = dxcam.create(output_color="BGR")
-camera.start(target_fps=30, region=REGION, video_mode=True)
+camera.start(target_fps=TARGET_FPS, region=REGION, video_mode=True)
 atexit.register(lambda: (camera.stop(), comtypes.CoUninitialize()))
 
-# ─── MAIN LOOP ──────────────────────────────────────────────────────────────
-printed_once = False
+# ─── UTILITIES ─────────────────────────────────────────────────────────────-
+def percent_in_range(frame, rect):
+    label, x1, y1, x2, y2 = rect
+    if x2 <= x1 or y2 <= y1:
+        raise ValueError(f"{label} invalid rectangle (non-positive size): {rect[1:]}")
+    roi = frame[y1:y2, x1:x2]
+    if roi.size == 0:
+        raise ValueError(f"{label} ROI empty: {rect[1:]}")
+    # Optional denoise to reduce flicker:
+    # roi = cv2.GaussianBlur(roi, (3,3), 0)
+    mask = cv2.inRange(roi, LOWER_BGR, UPPER_BGR)
 
+    pct = (cv2.countNonZero(mask) / mask.size) * 100.0
+    # print(mask, pct)
+    return pct
+
+BOX_COLORS = [
+    (0, 0, 255),
+    (255, 0, 0),
+    (0, 255, 0),
+    (0, 255, 255),
+]
+
+printed_debug = False
+
+# ─── MAIN LOOP ──────────────────────────────────────────────────────────────
 try:
     while True:
         frame = camera.get_latest_frame()
@@ -35,39 +66,32 @@ try:
             time.sleep(0.01)
             continue
 
-        # Crop the 1-pixel-high strip for each player
-        strip1 = frame[Y_HEALTH:Y_HEALTH+1, X1_P1:X2_P1]
-        strip2 = frame[Y_HEALTH:Y_HEALTH+1, X1_P2:X2_P2]
+        readings = []
+        for rect in RECTS:
+            print(rect)
+            try:
+                pct = percent_in_range(frame, rect)
+                print(pct)
+            except ValueError as e:
+                print("[WARN]", e)
+                pct = float("nan")
+            readings.append((rect[0], pct))
 
-        # Mask & percentage
-        m1 = cv2.inRange(strip1, LOWER_BGR, UPPER_BGR)
-        m2 = cv2.inRange(strip2, LOWER_BGR, UPPER_BGR)
-        pct1 = (cv2.countNonZero(m1) / LEN_P1) * 100.0
-        pct2 = (cv2.countNonZero(m2) / LEN_P2) * 100.0
-
-        # Print to console
-        print(f"P1 health: {pct1:5.1f}%   P2 health: {pct2:5.1f}%")
-
-        # Once—draw boxes and save a debug image
-        if not printed_once:
+        # Create labeled debug image once
+        if not printed_debug:
             debug = frame.copy()
-            # red box around P1 bar
-            cv2.rectangle(debug,
-                          (X1_P1, Y_HEALTH-2),
-                          (X2_P1, Y_HEALTH+2),
-                          (0,0,255), 2)
-            # blue box around P2 bar
-            cv2.rectangle(debug,
-                          (X1_P2, Y_HEALTH-2),
-                          (X2_P2, Y_HEALTH+2),
-                          (255,0,0), 2)
+            for (i, rect) in enumerate(RECTS):
+                label, x1, y1, x2, y2 = rect
+                color = BOX_COLORS[i % len(BOX_COLORS)]
+                cv2.rectangle(debug, (x1, y1), (x2, y2), color, 1)
+                cv2.putText(debug, label, (x1, y1 - 4),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
             os.makedirs("debug", exist_ok=True)
-            cv2.imwrite("debug/health_debug.png", debug)
-            print("Wrote debug/health_debug.png with overlays")
-            printed_once = True
+            cv2.imwrite("debug/rects_debug.png", debug)
+            print("Wrote debug/rects_debug.png with overlays")
+            printed_debug = True
 
-        # slow down so you can read
-        time.sleep(0.1)
+        time.sleep(DISPLAY_INTERVAL)
 
 except KeyboardInterrupt:
     print("Exiting…")

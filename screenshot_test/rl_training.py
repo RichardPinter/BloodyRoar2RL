@@ -129,23 +129,24 @@ def producer():
             frame_q.put((frm.copy(), ts))
 
 # ─── SINGLE CONSUMER w/ HEALTH & ROUND LOGIC ────────────────────────────────
+match_number = 1
+
+
 def consumer():
+    global match_number    # now refers to module‐level `match_number`
+
     state        = "waiting"
-    global match_number 
     alive_since  = None
     death_since  = None
 
-    # Match tracking
     p1_wins      = 0
     p2_wins      = 0
     match_over   = False
     p1_losses    = 0
 
-    # Spam parameters: alternate start→kick until health bars refill
     spam_counter = 0
     spam_done    = False
 
-    # HSV yellow range for “any health pixel”
     YEL_HSV_LOW  = np.array([20,  50,  50], dtype=np.uint8)
     YEL_HSV_HIGH = np.array([40, 255, 255], dtype=np.uint8)
 
@@ -153,39 +154,33 @@ def consumer():
         with open(ACTIONS_FILE, "w") as f:
             f.write(text)
 
-    # ---- DUMMY HOOKS ----
-    # ─── DQN TRAINING HELPERS ─────────────────────────────────────────────
+    # ── TRAINING HOOKS ───────────────────────────────
     def on_round_end():
-        # Called at the end of each round: do one “episode” worth of gradient updates
-        # until your buffer is below batch_size.
+        # Drain buffer in BATCH_SIZE chunks
         while buffer.len >= BATCH_SIZE:
             states, actions, rewards, next_states, dones = buffer.sample(BATCH_SIZE)
-            # compute target Q’s
             with torch.no_grad():
                 next_q   = target_net(next_states).max(1)[0]
                 target_q = rewards + GAMMA * next_q * (1 - dones.float())
-            # get current Q’s and mse loss
+
             q_vals = policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
             loss   = F.mse_loss(q_vals, target_q)
-            # backprop
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        # after you’ve emptied (or nearly emptied) the buffer for this round,
-        # sync the target network so it slowly chases the policy net
+
+        # Only after *all* updates, sync target_net
         target_net.load_state_dict(policy_net.state_dict())
-        # (Optionally) leave the buffer intact if you want multi‐round replay
+        print("🛠️  [TRAIN] Completed per‐round updates")
 
     def on_match_end():
         global match_number
-        # Called once the match (best-of-2) is decided.
-        # You might do a little extra logging, model save, or another training pass.
-        print(f"[MatchEnd] saving model after match")
+        print(f"🛠️  [TRAIN] on_match_end() — saving model #{match_number}")
         torch.save(policy_net.state_dict(),
-                f"model_match_{match_number}.pth")
-        # bump your match counter here if you track it
+                   f"model_match_{match_number}.pth")
         match_number += 1
-        # ----------------------
+    # ────────────────────────────────────────────────
 
     while not stop_event.is_set():
         frame, ts = frame_q.get()
