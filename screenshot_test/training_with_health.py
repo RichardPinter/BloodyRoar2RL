@@ -42,7 +42,9 @@ GAMMA         = 0.99
 BATCH_SIZE    = 32
 TARGET_SYNC   = 1000
 REPLAY_SIZE   = 10000
-HEALHT_LIMIT = 99.0  # Health percentage to consider "full"
+HEALTH_LIMIT = 99.0  # Health percentage to consider "full"
+SPAM_START_FRAMES = 5   # send "start\n" for 5 frames
+SPAM_KICK_FRAMES  = 3 
 
 # ─── DQN NET ───────────────────────────────────────────────────────────────
 class DQNNet(nn.Module):
@@ -128,75 +130,123 @@ def producer():
 
 # ─── SINGLE CONSUMER w/ HEALTH & ROUND LOGIC ────────────────────────────────
 def consumer():
-    state = "waiting"
-    alive_since = None
-    death_since = None
+    state        = "waiting"
+    alive_since  = None
+    death_since  = None
+
+    # Match tracking
+    p1_wins      = 0
+    p2_wins      = 0
+    match_over   = False
+    p1_losses    = 0
+
+    # Spam parameters: two start→kick pairs
+    SPAM_CYCLES  = 2
+    spam_counter = 0
+    spam_done    = False
+
+    # HSV yellow range for “any health pixel”
+    YEL_HSV_LOW  = np.array([20,  50,  50], dtype=np.uint8)
+    YEL_HSV_HIGH = np.array([40, 255, 255], dtype=np.uint8)
+
+    def write_action(text: str):
+        with open(ACTIONS_FILE, "w") as f:
+            f.write(text)
 
     while not stop_event.is_set():
         frame, ts = frame_q.get()
-        # 1) compute health %
-        mask1 = cv2.inRange(frame[Y_HEALTH:Y_HEALTH+1, X1_P1:X2_P1], LOWER_BGR, UPPER_BGR)
-        pct1  = cv2.countNonZero(mask1) / LEN_P1 * 100.0
-        # print(mask1, pct1)
-        mask2 = cv2.inRange(frame[Y_HEALTH:Y_HEALTH+1, X1_P2:X2_P2], LOWER_BGR, UPPER_BGR)
-        pct2  = cv2.countNonZero(mask2) / LEN_P2 * 100.0
-        # print(mask2, pct2)
-        results.append((ts, pct1, pct2))
 
+        # 1) Health % via strict BGR mask
+        strip = frame[Y_HEALTH:Y_HEALTH+1]
+        m1    = cv2.inRange(strip[:, X1_P1:X2_P1], LOWER_BGR, UPPER_BGR)
+        m2    = cv2.inRange(strip[:, X1_P2:X2_P2], LOWER_BGR, UPPER_BGR)
+        pct1  = cv2.countNonZero(m1) / LEN_P1 * 100.0
+        pct2  = cv2.countNonZero(m2) / LEN_P2 * 100.0
+
+        # 2) “Any yellow” via HSV for death detection
+        hsv_strip = cv2.cvtColor(strip, cv2.COLOR_BGR2HSV)
+        any1 = cv2.countNonZero(cv2.inRange(
+            hsv_strip[:, X1_P1:X2_P1], YEL_HSV_LOW, YEL_HSV_HIGH))
+        any2 = cv2.countNonZero(cv2.inRange(
+            hsv_strip[:, X1_P2:X2_P2], YEL_HSV_LOW, YEL_HSV_HIGH))
+
+        # 3) WAITING → detect round start
         if state == "waiting":
-            # wait for both near‐full for 0.5 s
-            if pct1 >= HEALHT_LIMIT and pct2 >=HEALHT_LIMIT:
+            if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
                 alive_since = alive_since or time.time()
                 if time.time() - alive_since >= 0.5:
-                    print("Round started!")
+                    print("→ Round started!")
+                    match_over = False
                     state = "active"
                     frame_stack.clear()
+                    spam_counter = 0
             else:
                 alive_since = None
 
+        # 4) ACTIVE → DQN actions + death detection
         elif state == "active":
-            # stack & act
+            # build frame stack & pick action
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             img  = cv2.resize(gray, CNN_SIZE, interpolation=cv2.INTER_NEAREST)
-            frame_stack.append(img.astype(np.float32)/255.0)
+            frame_stack.append(img.astype(np.float32) / 255.0)
 
             if len(frame_stack) == FRAME_STACK:
-                state_tensor = np.stack(frame_stack, 0)
-                eps = max(0.01, 0.1 - 0.1*(buffer.len/10000))
-
+                st  = np.stack(frame_stack, 0)
+                eps = max(0.01, 0.1 - 0.1 * (buffer.len / 10000))
                 if random.random() < eps:
-                    act_idx = random.randrange(NUM_ACTIONS)
+                    a = random.randrange(NUM_ACTIONS)
                 else:
                     with torch.no_grad():
-                        qv = policy_net(torch.from_numpy(state_tensor).unsqueeze(0).to(DEVICE))
-                    act_idx = int(qv.argmax(1).item())
-
-                # write action
-                with open(ACTIONS_FILE, "w") as f:
-                    f.write(ACTIONS[act_idx])
-
-                # reward & buffer
-                prev = frame_stack[0]
-                # approximate prev health from last entry in results
-                # (you could track prev_pct1/pct2 similarly if you like)
-                buffer.add(prev, act_idx, 0.0, state_tensor, False)
-
+                        q = policy_net(torch.from_numpy(st)
+                                       .unsqueeze(0).to(DEVICE))
+                    a = int(q.argmax(1).item())
+                write_action(ACTIONS[a] + "\n")
+                buffer.add(frame_stack[0], a, 0.0, st, False)
                 frame_stack.popleft()
 
-            # check for death >1 s
-            if pct1 <= 0 or pct2 <= 0:
+            # death when no yellow remains
+            if any1 == 0 or any2 == 0:
                 death_since = death_since or time.time()
                 if time.time() - death_since >= 1.0:
-                    loser = 1 if pct1 <= 0 else 2
-                    print(f"Player {loser} died!")
-                    state = "waiting"
-                    alive_since = death_since = None
+                    loser = 1 if any1 == 0 else 2
+                    winner = "p2" if loser == 1 else "p1"
+                    print(f"← Player {loser} died → Winner: {winner}")
+
+                    # update wins
+                    if winner == "p1":
+                        p1_wins += 1
+                    else:
+                        p2_wins += 1
+
+                    # match-over: first to 2 wins
+                    if p1_wins >= 2 or p2_wins >= 2:
+                        match_over   = True
+                        spam_counter = 0
+                        spam_done    = False
+                        print(f"🏁 Match over! Score P1:{p1_wins} P2:{p2_wins}")
+                        if p2_wins > p1_wins:
+                            p1_losses += 1
+                            print(f"❌ Player 1 lost the match ({p1_losses} losses)")
+                        # reset win counts
+                        p1_wins = p2_wins = 0
+
+                    # back to waiting for next round
+                    state        = "waiting"
+                    alive_since  = death_since = None
             else:
                 death_since = None
 
-        # capture screenshot
-        if len(screenshots) < MAX_FRAMES:
-            screenshots.append(frame.copy())
+        # 5) POST-MATCH spam (only if Player 2 won the match)
+        if match_over and state == 'waiting':
+            text = "start\n" if (spam_counter % 2) == 0 else "kick\n"
+            write_action(text)
+            spam_counter += 1
+            frame_q.task_done()
+            continue
+
+            # both bars full → exit spam mode
+            match_over = False
+            print("🔄 Health bars reset — exiting spam mode")
 
         frame_q.task_done()
 
