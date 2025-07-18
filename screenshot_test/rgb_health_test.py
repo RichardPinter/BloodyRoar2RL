@@ -18,10 +18,10 @@ import torch.nn.functional as F
 from PIL import Image
 
 # ─── CONFIGURATION ───────────────────────────────────────────────────────────
-REGION      = (0, 0, 680, 540)            # Cropped fight screen; ensure this includes the frame counter if needed
-Y_HEALTH    = 115                          # Health bar vertical position
-X1_P1, X2_P1 = 78, 298                     # P1 bar horizontal bounds (220 px)
-X1_P2, X2_P2 = 358, 578                    # P2 bar horizontal bounds (220 px)
+REGION      = (0, 0, 550, 640)            # Cropped fight screen; ensure this includes the frame counter if needed
+Y_HEALTH    = 106                          # Health bar vertical position
+X1_P1, X2_P1 = 70, 291                     # P1 bar horizontal bounds (220 px)
+X1_P2, X2_P2 = 350, 571                    # P2 bar horizontal bounds (220 px)
 LEN_P1      = X2_P1 - X1_P1
 LEN_P2      = X2_P2 - X1_P2
 

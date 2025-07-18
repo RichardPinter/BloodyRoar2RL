@@ -19,10 +19,10 @@ import torch.nn.functional as F
 from PIL import Image
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
-REGION        = (0, 0, 680, 540)
-Y_HEALTH      = 115
-X1_P1, X2_P1  = 78, 298
-X1_P2, X2_P2  = 358, 578
+REGION      = (0, 0, 624, 548)      # x, y, width, height
+Y_HEALTH    = 116
+X1_P1, X2_P1 = 73, 292
+X1_P2, X2_P2 = 355, 574
 LEN_P1        = X2_P1 - X1_P1
 LEN_P2        = X2_P2 - X1_P2
 
@@ -162,7 +162,7 @@ def consumer():
 
     while not stop_event.is_set() or not frame_q.empty():
         frame, ts = frame_q.get()
-
+        print(frame)
         cv2.inRange(frame[slice_p1], LOWER_BGR, UPPER_BGR, mask1)
         pct1 = cv2.countNonZero(mask1) / LEN_P1 * 100.0
         cv2.inRange(frame[slice_p2], LOWER_BGR, UPPER_BGR, mask2)
