@@ -23,7 +23,7 @@ function execute_action(action_text)
         joypad.set({["P1 X"] = true})          -- X = Kick
         return true
     elseif action == "punch" then
-        joypad.set({["P1 ⬜"] = true})         -- Square = Punch
+        joypad.set({["P1 ◻"] = true})         -- Square = Punch
         return true
     elseif action == "transform" then
         joypad.set({["P1 ○"] = true})          -- Circle = Transform

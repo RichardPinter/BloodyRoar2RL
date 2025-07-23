@@ -29,7 +29,7 @@ UPPER_BGR   = np.array([30,175,220], dtype=np.uint8)
 
 FRAME_STACK   = 4
 CNN_SIZE      = (84, 84)
-ACTIONS       = ["jump", "kick", "transform", "squat", "left", "right"]
+ACTIONS       = [ "kick", "transform", "jump", "squat", "left", "right"]
 NUM_ACTIONS   = len(ACTIONS)
 ACTION_REPEAT = 4
 
@@ -46,7 +46,7 @@ HEALTH_LIMIT = 99.0  # Health percentage to consider "full"
 LEARNING_RATE = 1e-4
 
 # Model loading and test mode
-LOAD_CHECKPOINT = "C:/Users/richa/bro2_rl/screenshot_test/model_match_640.pth"  # Set to None to train from scratch
+LOAD_CHECKPOINT = "C:/Users/richa/bro2_rl/screenshot_test/model_match_706.pth"  # Set to None to train from scratch
 TEST_MODE = False  # Set to True to disable training and just play
 
 # Round indicator monitoring - Working coordinates
@@ -333,6 +333,15 @@ def consumer():
     # Initialize robust round and match tracking
     round_state = RoundState()
     match_tracker = MatchTracker()
+    
+    cv2.namedWindow("Q-Values", cv2.WINDOW_AUTOSIZE)
+
+    # compute where to put it:
+    x, y, w, h = REGION     # REGION = (0,0,624,548)
+    win_x = x
+    win_y = y + h + 100     # leave a 100px buffer below the capture area
+
+    cv2.moveWindow("Q-Values", win_x, win_y)
 
     def write_action(text: str):
         with open(ACTIONS_FILE, "w") as f:
@@ -436,7 +445,7 @@ def consumer():
 
                     # Store transition with proper reward
                     buffer.add(prev_state, prev_action, reward, current_state, False)
-
+                
                 # Select action
                 if TEST_MODE:
                     eps = 0.01  # Very low exploration in test mode
@@ -448,6 +457,22 @@ def consumer():
                 else:
                     with torch.no_grad():
                         q = policy_net(torch.from_numpy(current_state).unsqueeze(0).to(DEVICE))
+                        q_vals = q.squeeze(0).cpu().numpy()                  # (NUM_ACTIONS,)
+                        height = 20 * len(ACTIONS)
+                        width  = 200
+                        disp   = np.zeros((height, width, 3), dtype=np.uint8)
+
+                        for i, (act, val) in enumerate(zip(ACTIONS, q_vals)):
+                            y = 15 + i * 20
+                            text = f"{act[:6]:6s}: {val:6.2f}"
+                            cv2.putText(disp, text, (5, y),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1, cv2.LINE_AA)
+
+                        cv2.imshow("Q-Values", disp)
+                        cv2.waitKey(1)
+                        
+                        
+                        
                     action = int(q.argmax(1).item())
 
                 write_action(ACTIONS[action] + "\n")
