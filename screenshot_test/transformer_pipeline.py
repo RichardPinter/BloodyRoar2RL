@@ -37,7 +37,7 @@ NUM_ACTIONS     = len(ACTIONS)
 DEVICE          = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LOG_CSV         = "health_results.csv"
 ACTIONS_FILE    = "../actions.txt"
-MAX_FRAMES      = 100
+MAX_FRAMES      = 1000
 GAMMA           = 0.99
 BATCH_SIZE      = 32
 TARGET_SYNC     = 1000
@@ -396,6 +396,7 @@ def consumer():
     
     # Step 1: create a named window for Q‑values
     cv2.namedWindow("Q-Values", cv2.WINDOW_AUTOSIZE)
+    cv2.namedWindow("Rewards",  cv2.WINDOW_AUTOSIZE)
 
     # compute where to put it:
     x, y, w, h = REGION     # REGION = (0,0,624,548)
@@ -403,6 +404,7 @@ def consumer():
     win_y = y + h + 100     # leave a 100px buffer below the capture area
 
     cv2.moveWindow("Q-Values", win_x, win_y)
+    cv2.moveWindow("Rewards", win_x+300, win_y)
 
     def write_action(text: str):
         with open(ACTIONS_FILE, "w") as f:
@@ -414,8 +416,17 @@ def consumer():
 
     def on_match_end():
         match_end_event.set()  # Signal the learner thread for match end
-    # ────────────────────────────────────────────────
+    # ──────────────  Reward Tracking ─────────────────
+    reward_history = deque(maxlen=100)
 
+    round_reward = 0.0
+    # ────────────────────────────────────────────────
+    
+    
+    # In consumer(), before while loop
+    debug_file = open("debug_transitions.txt", "a")
+    write_count = 0
+    
     while not stop_event.is_set():
         frame, ts = frame_q.get()
 
@@ -489,6 +500,7 @@ def consumer():
 
         # 5) ACTIVE → DQN actions + death detection
         elif state == "active":
+            
             # 0) Compute transform & black‐pixel diagnostics
             ts = classify_transform_state(frame)          # {'P1_R1_pixel':..., 'P2_R2_pixel':...}
             bp, _ = compute_black_stats(frame)            # ({'P1_R1_area':pct,...}, {...})
@@ -519,8 +531,9 @@ def consumer():
                     our_damage = prev_pct1 - pct1
                     opp_damage = prev_pct2 - pct2
                     reward     = opp_damage - our_damage
-
+                    round_reward += reward
                     # store transition with extras
+                    
                     buffer.add(
                         prev_state,
                         prev_extra_feats,
@@ -529,7 +542,18 @@ def consumer():
                         current_state,
                         False
                     )
+                    debug_file.write(f"TS: {time.time():.4f} | Transition: ...")
+                    debug_file.write(f" {prev_state}.")
+                    debug_file.write(f" {prev_extra_feats}.")
+                    debug_file.write(f" {prev_action}.")
+                    debug_file.write(f" {reward}.")
+                    debug_file.write(f" {current_state}.")
+                    debug_file.write(f" {False}.")
+                    write_count += 1
 
+                # Update reward
+                 
+                
                 # 3) Convert to tensors
                 state_img    = torch.from_numpy(current_state).unsqueeze(0).to(DEVICE)   # (1,4,84,84)
                 extra_tensor = torch.from_numpy(extra_feats).unsqueeze(0).to(DEVICE)      # (1,4)
@@ -555,9 +579,11 @@ def consumer():
                         cv2.imshow("Q-Values", disp)
                         cv2.waitKey(1)
                     action = int(q.argmax(1).item())
-
+                
                 write_action(ACTIONS[action] + "\n")
-
+                debug_file.write(f" {ACTIONS[action]}.")
+                if write_count % 100 == 0:
+                    debug_file.flush()
                 # 5) Roll forward for next step
                 prev_state        = current_state
                 prev_extra_feats  = extra_feats
@@ -568,6 +594,35 @@ def consumer():
 
         # Check for confirmed round wins
         if state == "active" and round_result and round_result[0] == "round_won":
+            
+            print(round_reward)
+            # 1) push this round’s total reward
+            reward_history.append(round_reward)
+            round_reward = 0.0
+
+            # 2) draw a small line‐chart of reward_history
+            h, w = 150, 300
+            graph = np.zeros((h, w, 3), dtype=np.uint8)
+            if len(reward_history) > 1:
+                mn = min(reward_history)
+                mx = max(reward_history)
+                span = mx - mn if mx != mn else 1.0
+                pts = []
+                for i, r in enumerate(reward_history):
+                    x = int(i * (w-1) / (len(reward_history)-1))
+                    y = h - 1 - int((r - mn) * (h-1) / span)
+                    pts.append((x, y))
+                cv2.polylines(graph, [np.array(pts, np.int32)], False, (0,255,0), 2)
+
+                # optional: draw min/max labels
+                cv2.putText(graph, f"{mx:.1f}", (5,15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180,180,180), 1)
+                cv2.putText(graph, f"{mn:.1f}", (5,h-5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180,180,180), 1)
+
+            cv2.imshow("Rewards", graph)
+            cv2.waitKey(1)
+            
             _, winner, p1_rounds, p2_rounds = round_result
 
             # Final transition with done=True and terminal reward
