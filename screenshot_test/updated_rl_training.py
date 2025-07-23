@@ -46,7 +46,7 @@ HEALTH_LIMIT = 99.0  # Health percentage to consider "full"
 LEARNING_RATE = 1e-4
 
 # Model loading and test mode
-LOAD_CHECKPOINT = "model_match_20.pth"  # Set to None to train from scratch
+LOAD_CHECKPOINT = "C:/Users/richa/bro2_rl/screenshot_test/model_match_640.pth"  # Set to None to train from scratch
 TEST_MODE = False  # Set to True to disable training and just play
 
 # Round indicator monitoring - Working coordinates
@@ -68,6 +68,7 @@ class DQNNet(nn.Module):
         self.conv3 = nn.Conv2d(64, 64, 3, 1)
         conv_out = 64 * 7 * 7
         self.fc1   = nn.Linear(conv_out, 512)
+        
         self.out   = nn.Linear(512, n_actions)
 
     def forward(self, x):
@@ -281,6 +282,8 @@ if LOAD_CHECKPOINT and os.path.exists(LOAD_CHECKPOINT):
         start_match_number = int(match.group(1)) + 1
         print(f"   Continuing from match {start_match_number}")
 else:
+    print(os.path.exists(LOAD_CHECKPOINT))
+    print(LOAD_CHECKPOINT)
     target_net.load_state_dict(policy_net.state_dict())
     if LOAD_CHECKPOINT:
         print(f"⚠️  Checkpoint {LOAD_CHECKPOINT} not found, training from scratch")
