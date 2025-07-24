@@ -46,7 +46,7 @@ MIN_BUFFER_SIZE = 1000
 HEALTH_LIMIT    = 99.0
 LEARNING_RATE   = 1e-4
 
-LOAD_CHECKPOINT = "C:/Users/richa/bro2_rl/screenshot_test/model_match_640.pth"
+LOAD_CHECKPOINT = "C:/Users/richa/bro2_rl/screenshot_test/model_match_34.pth"
 TEST_MODE       = False
 
 ROUND_INDICATORS = {
@@ -542,13 +542,7 @@ def consumer():
                         current_state,
                         False
                     )
-                    debug_file.write(f"TS: {time.time():.4f} | Transition: ...")
-                    debug_file.write(f" {prev_state}.")
-                    debug_file.write(f" {prev_extra_feats}.")
-                    debug_file.write(f" {prev_action}.")
-                    debug_file.write(f" {reward}.")
-                    debug_file.write(f" {current_state}.")
-                    debug_file.write(f" {False}.")
+                    print(prev_extra_feats)
                     write_count += 1
 
                 # Update reward
