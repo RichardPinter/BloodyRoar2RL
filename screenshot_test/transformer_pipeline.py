@@ -44,6 +44,7 @@ TARGET_SYNC     = 1000
 REPLAY_SIZE     = 10000
 MIN_BUFFER_SIZE = 1000
 HEALTH_LIMIT    = 99.0
+
 LEARNING_RATE   = 1e-4
 
 LOAD_CHECKPOINT = "C:/Users/richa/bro2_rl/screenshot_test/model_match_34.pth"
