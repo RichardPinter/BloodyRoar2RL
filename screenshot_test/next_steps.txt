@@ -1,1 +1,0 @@
-Next steps - add oponent number and name (and current player name or just an id I suppose)

@@ -1,4 +1,0 @@
-comtypes==1.4.5
-dxcam==0.0.5
-numpy>=1.26
-opencv-python>=4.8
