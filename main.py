@@ -8,7 +8,7 @@ from queue import Queue
 from collections import deque
 import random
 import re
-
+import os
 import comtypes
 import dxcam
 import numpy as np
@@ -16,6 +16,7 @@ import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter  
 from PIL import Image
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
@@ -47,8 +48,14 @@ HEALTH_LIMIT    = 99.0
 
 LEARNING_RATE   = 1e-4
 
-LOAD_CHECKPOINT = "C:/Users/richa/bro2_rl/screenshot_test/model_match_34.pth"
+MODEL_DIR = "../models"
+os.makedirs(MODEL_DIR, exist_ok=True)
+MODEL_NUMBER = 126
+os.makedirs(MODEL_DIR, exist_ok=True)
+LOAD_CHECKPOINT = f"{MODEL_DIR}model_match_{MODEL_NUMBER}.pth"
 TEST_MODE       = False
+
+writer = SummaryWriter(log_dir="../logs")
 
 ROUND_INDICATORS = {
     'p1_round1': (270, 135, 278, 140),
@@ -695,6 +702,9 @@ def learner():
             loss.backward()
             total_norm = torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
             optimizer.step()
+            
+            writer.add_scalar("loss/train", loss.item(), train_steps)
+            writer.add_scalar("buffer/size", buffer.len, train_steps)
 
             train_steps += 1
             # Log the training loss and buffer occupancy periodically
@@ -716,7 +726,7 @@ def learner():
         # Check for match end to save model
         if match_end_event.wait(timeout=0.01):
             match_end_event.clear()
-            model_path = f"model_match_{match_number}.pth"
+            model_path = f"{MODEL_DIR}/model_match_{match_number}.pth"
             torch.save(policy_net.state_dict(), model_path)
             print(f"[Learner] Saved model to {model_path}")
             match_number += 1
@@ -756,6 +766,8 @@ if __name__ == "__main__":
         print("\nShutting down...")
         stop_event.set()
 
+    writer.close()
+    
     # drain & join
     t_p.join()
     frame_q.join()
