@@ -268,8 +268,11 @@ class RoundState:
         # Candidate state (needs confirmation)
         self.candidate_state = None
         self.candidate_start_time = None
-        self.CONFIRMATION_TIME = 3  # Must see state for 1 second
+        self.CONFIRMATION_TIME = 0.5  # Keep at 0.5s for stability
 
+        # Track if we've recently confirmed a round
+        self.last_round_end_time = None
+        
         log_state("🔄 RoundState initialized: P1:0 P2:0")
 
     def update(self, detected_p1, detected_p2):
@@ -297,10 +300,9 @@ class RoundState:
                     elapsed = current_time - self.candidate_start_time
 
                     if elapsed >= self.CONFIRMATION_TIME:
-                        # ⚠️ Guard against both players “winning” simultaneously
+                        # Guard against both players "winning" simultaneously
                         if detected_p1 > self.confirmed_p1_rounds and detected_p2 > self.confirmed_p2_rounds:
                             log_debug(f"⚠️ Ambiguous round: both P1 and P2 advanced ({detected_p1}-{detected_p2}); ignoring")
-                            # clear candidate so we don’t keep retrying on the same glitch
                             self.candidate_state = None
                             self.candidate_start_time = None
                             return None
@@ -309,25 +311,33 @@ class RoundState:
                         old_p1, old_p2 = self.confirmed_p1_rounds, self.confirmed_p2_rounds
                         self.confirmed_p1_rounds = detected_p1
                         self.confirmed_p2_rounds = detected_p2
+                        
+                        # Track when this round ended
+                        self.last_round_end_time = current_time
 
-                        # Determine who won the round
-                        if detected_p1 > old_p1:
+                        # Determine who won the round (check P2 first)
+                        if detected_p2 > old_p2:
+                            winner = "p2"
+                            log_round(f"🎯 ROUND CONFIRMED: P2 won! (P1:{detected_p1} P2:{detected_p2})")
+                        elif detected_p1 > old_p1:
                             winner = "p1"
                             log_round(f"🎯 ROUND CONFIRMED: P1 won! (P1:{detected_p1} P2:{detected_p2})")
                         else:
-                            winner = "p2"
-                            log_round(f"🎯 ROUND CONFIRMED: P2 won! (P1:{detected_p1} P2:{detected_p2})")
+                            # This shouldn't happen due to earlier checks, but just in case
+                            log_debug(f"⚠️ Round confirmed but no winner detected?")
+                            winner = "unknown"
 
                         # Clear candidate
                         self.candidate_state = None
                         self.candidate_start_time = None
 
                         value_tuple = ("round_won", winner, detected_p1, detected_p2)
-                        log_round(f'HEEEEEY, this is good for your debugging the match start issues {value_tuple}')
+                        log_round(f'Round confirmation successful: {value_tuple}')
                         return value_tuple
                     else:
                         # Still waiting for confirmation
-                        log_debug(f"⏳ [Candidate] P1:{detected_p1} P2:{detected_p2} ({elapsed:.1f}s) - waiting for confirmation...")
+                        if elapsed < 0.1 or int(elapsed * 10) != int((elapsed - 0.016) * 10):
+                            log_debug(f"⏳ [Candidate] P1:{detected_p1} P2:{detected_p2} ({elapsed:.1f}s) - waiting for confirmation...")
                 else:
                     # New candidate state
                     self.candidate_state = new_state
@@ -342,6 +352,11 @@ class RoundState:
 
         return None
 
+    def has_round_recently_ended(self, timeout=2.0):
+        """Check if a round ended within the timeout period"""
+        if self.last_round_end_time is None:
+            return False
+        return (time.time() - self.last_round_end_time) < timeout
 
     def get_current_state(self):
         """Get the current confirmed round state"""
@@ -353,6 +368,7 @@ class RoundState:
         self.confirmed_p2_rounds = 0
         self.candidate_state = None
         self.candidate_start_time = None
+        self.last_round_end_time = None
         log_state("🔄 RoundState reset: P1:0 P2:0")
 
 class MatchTracker:
@@ -421,7 +437,7 @@ def detect_round_indicators(frame):
         if 'p2' in name and red_pct > 10:
             debug_info.append(f"{name}:{red_pct:.1f}%")
 
-        # Simple threshold: >50% red = won round
+        # Simple threshold: >30% red = won round
         results[name] = red_pct > 30.0
     
     # Log all P2 debug info at once to reduce file writes
@@ -430,7 +446,7 @@ def detect_round_indicators(frame):
 
     return results
 
-# ─── SETUP ───────────────────────────────────────────────────────────────────
+# ─── SETUP ───────────────────────────────────────────────────────────────
 import re
 
 EXTRA_DIM = 4  # [P1_state, P2_state, P1_black_pct, P2_black_pct]
@@ -489,7 +505,7 @@ def producer():
             ts = time.perf_counter() - start
             frame_q.put((frm.copy(), ts))
 
-# ─── SINGLE CONSUMER w/ HEALTH & ROUND LOGIC ────────────────────────────────
+# ─── SINGLE CONSUMER w/ FIXED ROUND LOGIC ────────────────────────────────────
 def consumer():
     global match_number, global_step, episode_number
     
@@ -500,7 +516,13 @@ def consumer():
     # Track how many rounds (episodes) we've seen
     episode_count = 1
 
-    state        = "waiting"
+    # MODIFIED STATE MACHINE:
+    # - "waiting_for_match": Waiting for first round of a new match
+    # - "waiting_for_round": Previous round ended, waiting for next round
+    # - "active": Round is in progress
+    # - "post_match_waiting": Match ended, navigating menus
+    state = "waiting_for_match"
+    
     alive_since  = None
     death_since  = None
 
@@ -559,6 +581,10 @@ def consumer():
     # In consumer(), before while loop
     write_count = 0
     
+    # Post-match state tracking
+    post_match_entry_logged = False
+    post_match_action_count = 0
+    
     while not stop_event.is_set():
         # Get frame with timeout to avoid blocking during post-match
         frame = None
@@ -566,12 +592,10 @@ def consumer():
         try:
             frame, ts = frame_q.get(timeout=0.1)
         except:
-            # No frame available - important for post_match_waiting state
+            # No frame available - handle post_match actions
             if state == "post_match_waiting":
-                # Still need to write actions even without new frames
                 time_rounded = round(time.time(), 2)
                 time_int = int(time_rounded * 100)
-                
                 if time_int % 2 == 0:
                     write_action("start\n")
                 else:
@@ -587,33 +611,136 @@ def consumer():
         pct1  = cv2.countNonZero(m1) / LEN_P1 * 100.0
         pct2  = cv2.countNonZero(m2) / LEN_P2 * 100.0
 
-        # 2) Robust round detection with confirmation (only during active rounds)
-        round_result = None
-        detected_p1_rounds = 0
-        detected_p2_rounds = 0
+        # 2) ALWAYS detect rounds - STATE INDEPENDENT!
+        round_indicators = detect_round_indicators(frame)
+        detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
+        detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
         
-        if state in ["waiting", "active"]:  # Only check rounds when not in post-match
-            round_indicators = detect_round_indicators(frame)
+        # Log periodically
+        if global_step % 30 == 0:
+            log_debug(f"Frame health: P1={pct1:.2f}%, P2={pct2:.2f}%")
+            log_debug(f"Round indicators: {round_indicators}")
+            log_debug(f"Detected rounds: P1={detected_p1_rounds}, P2={detected_p2_rounds}")
+            log_debug(f"Current state: {state}")
 
-            # Count current rounds for each player
-            detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
-            detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
+        # 3) Update round state - ALWAYS, regardless of game state
+        round_result = round_state.update(detected_p1_rounds, detected_p2_rounds)
+
+        # 4) Handle round completion if detected
+        if round_result and round_result[0] == "round_won":
+            _, winner, p1_rounds, p2_rounds = round_result
             
-            # Add debug logging (only every 30 frames to reduce log spam)
-            if global_step % 30 == 0:  # Log every 0.5 seconds instead of every frame
-                log_debug(f"Frame health: P1={pct1:.2f}%, P2={pct2:.2f}%")
-                log_debug(f"Round indicators: {round_indicators}")
-                log_debug(f"Detected rounds: P1={detected_p1_rounds}, P2={detected_p2_rounds}")
+            log_round(f"[Episode] Round #{episode_count} total_reward={round_reward:.2f}")
+            episode_count += 1
+            episode_number += 1
+            
+            # Log episode metrics
+            round_duration = time.time() - round_start_time
+            writer.add_scalar("episode/reward", round_reward, episode_number)
+            writer.add_scalar("episode/length_steps", round_steps, episode_number)
+            writer.add_scalar("episode/length_seconds", round_duration, episode_number)
+            
+            # Log action distribution for this episode
+            if action_counts.sum() > 0:
+                action_probs = action_counts / action_counts.sum()
+                for i, action_name in enumerate(ACTIONS):
+                    writer.add_scalar(f"actions/episode_distribution/{action_name}", 
+                                    action_probs[i], episode_number)
+            
+            # 1) push this round's total reward
+            reward_history.append(round_reward)
+            round_reward = 0.0
 
-            # Update round state with new detection
-            round_result = round_state.update(detected_p1_rounds, detected_p2_rounds)
+            # 2) draw a small line‐chart of reward_history
+            h, w = 150, 300
+            graph = np.zeros((h, w, 3), dtype=np.uint8)
+            if len(reward_history) > 1:
+                mn = min(reward_history)
+                mx = max(reward_history)
+                span = mx - mn if mx != mn else 1.0
+                pts = []
+                for i, r in enumerate(reward_history):
+                    x = int(i * (w-1) / (len(reward_history)-1))
+                    y = h - 1 - int((r - mn) * (h-1) / span)
+                    pts.append((x, y))
+                cv2.polylines(graph, [np.array(pts, np.int32)], False, (0,255,0), 2)
 
-        # 3) WAITING → detect round start
-        if state == "waiting":
+                # optional: draw min/max labels
+                cv2.putText(graph, f"{mx:.1f}", (5,15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180,180,180), 1)
+                cv2.putText(graph, f"{mn:.1f}", (5,h-5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180,180,180), 1)
+
+            cv2.imshow("Rewards", graph)
+            cv2.waitKey(1)
+            
+            # Final transition with done=True and terminal reward
+            if prev_state is not None and prev_action is not None:
+                final_reward = 10.0 if winner == "p1" else -10.0
+                buffer.add(prev_state, prev_extra_feats, prev_action, final_reward, prev_state, prev_extra_feats, True)
+                
+                # Log round outcome
+                writer.add_scalar("episode/win", 1.0 if winner == "p1" else 0.0, episode_number)
+
+            # round-ended hook
+            on_round_end()
+
+            # Check for match end
+            match_result = match_tracker.check_match_end(p1_rounds, p2_rounds)
+            log_debug(f"Match check result: {match_result} for rounds P1:{p1_rounds} P2:{p2_rounds}")
+
+            if match_result and match_result[0] == "match_over":
+                # Match ended - save model and enter post-match navigation
+                on_match_end()
+                log_state(f"🎯 Match over! Entering post-match navigation mode...")
+                state = "post_match_waiting"
+                alive_since = None
+                death_since = None
+            else:
+                # Round ended but match continues
+                log_state(f"Round ended, waiting for next round...")
+                state = "waiting_for_round"
+                alive_since = None
+                death_since = None
+                # Reset post-match tracking in case we were in that state
+                post_match_entry_logged = False
+                post_match_action_count = 0
+
+        # 5) State-specific logic
+        if state == "waiting_for_match":
+            # Waiting for first round of a new match
+            if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
+                # Don't start if we just confirmed a round end
+                if not round_state.has_round_recently_ended(timeout=1.0):
+                    alive_since = alive_since or time.time()
+                    if time.time() - alive_since >= 0.5:
+                        log_round("🚀 FIRST ROUND OF MATCH STARTED!")
+                        write_action("start\n")
+                        state = "active"
+                        frame_stack.clear()
+                        # Reset tracking variables
+                        prev_state = None
+                        prev_action = None
+                        prev_pct1 = pct1
+                        prev_pct2 = pct2
+                        round_start_time = time.time()
+                        round_steps = 0
+                        round_reward = 0.0
+                        action_counts.fill(0)
+                        # Reset post-match tracking
+                        post_match_entry_logged = False
+                        post_match_action_count = 0
+                else:
+                    alive_since = None
+            else:
+                alive_since = None
+
+        elif state == "waiting_for_round":
+            # We KNOW previous round ended, waiting for next round
             if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
                 alive_since = alive_since or time.time()
-                if time.time() - alive_since >= 0.5:
-                    log_round("🚀 ROUND STARTED: Both players at 99%+ health!")
+                if time.time() - alive_since >= 0.3:  # Can be faster here
+                    log_round("🚀 NEXT ROUND STARTED!")
                     write_action("start\n")
                     state = "active"
                     frame_stack.clear()
@@ -624,57 +751,57 @@ def consumer():
                     prev_pct2 = pct2
                     round_start_time = time.time()
                     round_steps = 0
+                    round_reward = 0.0
                     action_counts.fill(0)
+                    # Reset post-match tracking
+                    post_match_entry_logged = False
+                    post_match_action_count = 0
             else:
                 alive_since = None
 
-        # 4) POST-MATCH WAITING → continuously alternate start/kick until new round
         elif state == "post_match_waiting":
             # Debug: Track if we're actually entering this state
-            if not hasattr(consumer, 'post_match_entry_logged'):
-                consumer.post_match_entry_logged = True
+            if not post_match_entry_logged:
+                post_match_entry_logged = True
                 log_state("ENTERED POST_MATCH_WAITING STATE")
-                consumer.post_match_action_count = 0
+                post_match_action_count = 0
             
-            # Continuously alternate between start and kick based on current time
+            # Check for match reset (indicators clear + full health)
+            indicators_clear = (detected_p1_rounds == 0 and detected_p2_rounds == 0)
+            
+            if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT and indicators_clear:
+                alive_since = alive_since or time.time()
+                if time.time() - alive_since >= 0.5:
+                    log_state(f"🆕 NEW MATCH DETECTED! Starting Match #{match_tracker.match_number}")
+                    round_state.reset()
+                    
+                    # Reset the debug flags
+                    post_match_entry_logged = False
+                    post_match_action_count = 0
+                    
+                    state = "waiting_for_match"
+                    alive_since = None
+            else:
+                alive_since = None
+                
+            # Continue alternating actions
             time_rounded = round(time.time(), 2)
             time_int = int(time_rounded * 100)
-
+            
             if time_int % 2 == 0:
                 action_to_write = "start\n"
             else:
                 action_to_write = "kick\n"
             
-            # Debug: Log every 50th action to confirm it's working
-            consumer.post_match_action_count += 1
-            if consumer.post_match_action_count % 50 == 0:
-                log_debug(f"Post-match action #{consumer.post_match_action_count}: {action_to_write.strip()}")
+            # Debug: Log every 50th action
+            post_match_action_count += 1
+            if post_match_action_count % 50 == 0:
+                log_debug(f"Post-match action #{post_match_action_count}: {action_to_write.strip()}")
             
-            # Actually write the action
             write_action(action_to_write)
 
-            # Wait for both health bars to reach 99%+ (indicating new round started)
-            if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
-                alive_since = alive_since or time.time()
-                if time.time() - alive_since >= 0.5:
-                    log_state(f"🆕 NEW ROUND DETECTED: Both players at 99%+ health! Starting Match #{match_tracker.match_number}")
-
-                    # Reset round state for the new match
-                    round_state.reset()
-
-                    # Reset the debug flag
-                    if hasattr(consumer, 'post_match_entry_logged'):
-                        delattr(consumer, 'post_match_entry_logged')
-                        delattr(consumer, 'post_match_action_count')
-
-                    # Transition back to normal flow
-                    state = "waiting"
-                    alive_since = None
-            else:
-                alive_since = None
-
-        # 5) ACTIVE → DQN actions + death detection
         elif state == "active":
+            # ACTIVE → DQN actions
             round_steps += 1
             global_step += 1
             
@@ -782,87 +909,6 @@ def consumer():
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180,180,180), 1)
                 cv2.imshow("Q-Values", disp)
                 cv2.waitKey(1)
-
-
-        # Check for confirmed round wins
-        if round_result and round_result[0] == "round_won" and state in ["active", "waiting"]:
-            log_debug(f"Round win detected in state: {state}")
-            episode_number += 1
-            
-            log_round(f"[Episode] Round #{episode_count} total_reward={round_reward:.2f}")
-            episode_count += 1
-            
-            # Log episode metrics
-            round_duration = time.time() - round_start_time
-            writer.add_scalar("episode/reward", round_reward, episode_number)
-            writer.add_scalar("episode/length_steps", round_steps, episode_number)
-            writer.add_scalar("episode/length_seconds", round_duration, episode_number)
-            
-            # Log action distribution for this episode
-            if action_counts.sum() > 0:
-                action_probs = action_counts / action_counts.sum()
-                for i, action_name in enumerate(ACTIONS):
-                    writer.add_scalar(f"actions/episode_distribution/{action_name}", 
-                                    action_probs[i], episode_number)
-            
-            # 1) push this round's total reward
-            reward_history.append(round_reward)
-            round_reward = 0.0
-
-            # 2) draw a small line‐chart of reward_history
-            h, w = 150, 300
-            graph = np.zeros((h, w, 3), dtype=np.uint8)
-            if len(reward_history) > 1:
-                mn = min(reward_history)
-                mx = max(reward_history)
-                span = mx - mn if mx != mn else 1.0
-                pts = []
-                for i, r in enumerate(reward_history):
-                    x = int(i * (w-1) / (len(reward_history)-1))
-                    y = h - 1 - int((r - mn) * (h-1) / span)
-                    pts.append((x, y))
-                cv2.polylines(graph, [np.array(pts, np.int32)], False, (0,255,0), 2)
-
-                # optional: draw min/max labels
-                cv2.putText(graph, f"{mx:.1f}", (5,15),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180,180,180), 1)
-                cv2.putText(graph, f"{mn:.1f}", (5,h-5),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180,180,180), 1)
-
-            cv2.imshow("Rewards", graph)
-            cv2.waitKey(1)
-            
-            _, winner, p1_rounds, p2_rounds = round_result
-            log_debug(f"Round result details - Winner: {winner}, P1 rounds: {p1_rounds}, P2 rounds: {p2_rounds}")
-
-            # Final transition with done=True and terminal reward
-            if prev_state is not None and prev_action is not None:
-                final_reward = 10.0 if winner == "p1" else -10.0
-                buffer.add(prev_state, prev_extra_feats, prev_action, final_reward, prev_state, prev_extra_feats, True)
-                
-                # Log round outcome
-                writer.add_scalar("episode/win", 1.0 if winner == "p1" else 0.0, episode_number)
-
-            # round-ended hook
-            on_round_end()
-
-            # Check for match end
-            match_result = match_tracker.check_match_end(p1_rounds, p2_rounds)
-            log_debug(f"Match check result: {match_result} for rounds P1:{p1_rounds} P2:{p2_rounds}")
-
-            if match_result and match_result[0] == "match_over":
-                # Match ended - save model and enter post-match navigation
-                on_match_end()
-                log_state(f"🎯 Match over! Entering post-match navigation mode...")
-                log_state(f"Changing state from '{state}' to 'post_match_waiting'")
-
-                state = "post_match_waiting"
-                alive_since = death_since = None
-            else:
-                # Round ended but match continues - back to waiting
-                log_debug(f"Round ended but match continues - going back to waiting state")
-                state = "waiting"
-                alive_since = death_since = None
 
         # Save results (always track health regardless of state)
         if frame is not None:
@@ -1013,7 +1059,7 @@ if __name__ == "__main__":
     log_state(f"Health bar locations - P1: {X1_P1}-{X2_P1}, P2: {X1_P2}-{X2_P2}")
     log_state(f"Learning rate: {LEARNING_RATE}")
     log_state(f"Min buffer size: {MIN_BUFFER_SIZE}, Target sync: {TARGET_SYNC} steps")
-    log_state(f"Round detection: Simplified rectangle monitoring")
+    log_state(f"Round detection: State-independent with confirmation")
     log_state(f"Round indicators: {len(ROUND_INDICATORS)} positions")
     if LOAD_CHECKPOINT:
         log_state(f"Checkpoint: {LOAD_CHECKPOINT}")
