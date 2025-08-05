@@ -18,6 +18,80 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter  
 from PIL import Image
+import logging
+from logging.handlers import RotatingFileHandler
+from datetime import datetime
+
+# ─── LOGGING SETUP ─────────────────────────────────────────────────────────
+# EASY TOGGLE: Set to False to disable file logging
+ENABLE_LOGGING = True
+
+# Create logs directory
+LOG_DIR = "logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Set up logging with rotation (keeps last 5 files of 50MB each)
+log_filename = os.path.join(LOG_DIR, f"game_debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+# Create a custom logger
+logger = logging.getLogger('GameDebug')
+logger.setLevel(logging.DEBUG)
+
+# Console handler (always enabled)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_formatter = logging.Formatter('%(message)s')
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+if ENABLE_LOGGING:
+    # File handler with rotation
+    file_handler = RotatingFileHandler(
+        log_filename, 
+        maxBytes=200*1024*1024,  # 200MB per file
+        backupCount=10,          # Keep 10 files (2GB total)
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.DEBUG)
+    
+    # Create formatter
+    file_formatter = logging.Formatter(
+        '%(asctime)s.%(msecs)03d | %(levelname)-8s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Add formatter to handler
+    file_handler.setFormatter(file_formatter)
+    
+    # Add handler to logger
+    logger.addHandler(file_handler)
+
+# Create separate loggers for different components
+round_logger = logging.getLogger('GameDebug.Round')
+match_logger = logging.getLogger('GameDebug.Match')
+state_logger = logging.getLogger('GameDebug.State')
+learner_logger = logging.getLogger('GameDebug.Learner')
+
+# ─── HELPER FUNCTIONS ─────────────────────────────────────────────────────
+def log_round(message, *args, **kwargs):
+    """Log round-related messages"""
+    round_logger.info(message, *args, **kwargs)
+
+def log_match(message, *args, **kwargs):
+    """Log match-related messages"""
+    match_logger.info(message, *args, **kwargs)
+
+def log_state(message, *args, **kwargs):
+    """Log state changes"""
+    state_logger.info(message, *args, **kwargs)
+
+def log_learner(message, *args, **kwargs):
+    """Log learner messages"""
+    learner_logger.info(message, *args, **kwargs)
+
+def log_debug(message, *args, **kwargs):
+    """Log debug messages (only to file)"""
+    logger.debug(message, *args, **kwargs)
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
 REGION        = (0, 0, 624, 548)      # x, y, width, height
@@ -37,7 +111,7 @@ NUM_ACTIONS     = len(ACTIONS)
 
 DEVICE          = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LOG_CSV         = "health_results.csv"
-ACTIONS_FILE    = "../actions.txt"
+ACTIONS_FILE    = "actions.txt"
 MAX_FRAMES      = 1000
 GAMMA           = 0.99
 BATCH_SIZE      = 32
@@ -183,6 +257,7 @@ class ReplayBuffer:
             torch.from_numpy(self.next_extras[idx]).to(DEVICE),
             torch.from_numpy(self.dones[idx].astype(np.uint8)).to(DEVICE),
         )
+
 # ─── ROBUST ROUND & MATCH LOGIC ───────────────────────────────────────────
 class RoundState:
     def __init__(self):
@@ -193,9 +268,9 @@ class RoundState:
         # Candidate state (needs confirmation)
         self.candidate_state = None
         self.candidate_start_time = None
-        self.CONFIRMATION_TIME = 1.0  # Must see state for 1 second
+        self.CONFIRMATION_TIME = 3  # Must see state for 1 second
 
-        print("🔄 RoundState initialized: P1:0 P2:0")
+        log_state("🔄 RoundState initialized: P1:0 P2:0")
 
     def update(self, detected_p1, detected_p2):
         """
@@ -204,6 +279,10 @@ class RoundState:
         """
         current_time = time.time()
         new_state = (detected_p1, detected_p2)
+
+        # Log all detections to file for debugging (only if changed)
+        if (detected_p1, detected_p2) != (self.confirmed_p1_rounds, self.confirmed_p2_rounds):
+            log_debug(f"Round detection: P1={detected_p1}, P2={detected_p2}, confirmed=(P1:{self.confirmed_p1_rounds}, P2:{self.confirmed_p2_rounds})")
 
         # Check if this is a valid upgrade (monotonic rule)
         if (detected_p1 >= self.confirmed_p1_rounds and
@@ -218,6 +297,14 @@ class RoundState:
                     elapsed = current_time - self.candidate_start_time
 
                     if elapsed >= self.CONFIRMATION_TIME:
+                        # ⚠️ Guard against both players “winning” simultaneously
+                        if detected_p1 > self.confirmed_p1_rounds and detected_p2 > self.confirmed_p2_rounds:
+                            log_debug(f"⚠️ Ambiguous round: both P1 and P2 advanced ({detected_p1}-{detected_p2}); ignoring")
+                            # clear candidate so we don’t keep retrying on the same glitch
+                            self.candidate_state = None
+                            self.candidate_start_time = None
+                            return None
+
                         # CONFIRMED! Update persistent state
                         old_p1, old_p2 = self.confirmed_p1_rounds, self.confirmed_p2_rounds
                         self.confirmed_p1_rounds = detected_p1
@@ -226,38 +313,35 @@ class RoundState:
                         # Determine who won the round
                         if detected_p1 > old_p1:
                             winner = "p1"
-                            print(f"🎯 ROUND CONFIRMED: P1 won! (P1:{detected_p1} P2:{detected_p2})")
+                            log_round(f"🎯 ROUND CONFIRMED: P1 won! (P1:{detected_p1} P2:{detected_p2})")
                         else:
                             winner = "p2"
-                            print(f"🎯 ROUND CONFIRMED: P2 won! (P1:{detected_p1} P2:{detected_p2})")
+                            log_round(f"🎯 ROUND CONFIRMED: P2 won! (P1:{detected_p1} P2:{detected_p2})")
 
                         # Clear candidate
                         self.candidate_state = None
                         self.candidate_start_time = None
 
-                        return ("round_won", winner, detected_p1, detected_p2)
+                        value_tuple = ("round_won", winner, detected_p1, detected_p2)
+                        log_round(f'HEEEEEY, this is good for your debugging the match start issues {value_tuple}')
+                        return value_tuple
                     else:
                         # Still waiting for confirmation
-                        # print(f"⏳ [Candidate] P1:{detected_p1} P2:{detected_p2} ({elapsed:.1f}s) - waiting for confirmation...")
-                        pass
-
+                        log_debug(f"⏳ [Candidate] P1:{detected_p1} P2:{detected_p2} ({elapsed:.1f}s) - waiting for confirmation...")
                 else:
                     # New candidate state
                     self.candidate_state = new_state
                     self.candidate_start_time = current_time
-                    # print(f"🔍 [New Candidate] P1:{detected_p1} P2:{detected_p2} - starting confirmation timer")
-                    pass
-
-            # else: same as confirmed state, no action needed
+                    log_debug(f"🔍 [New Candidate] P1:{detected_p1} P2:{detected_p2} - starting confirmation timer")
 
         else:
             # Not an upgrade - ignore (noise/temporary false positive)
             if (detected_p1 < self.confirmed_p1_rounds or
                 detected_p2 < self.confirmed_p2_rounds):
-                # print(f"🚫 [Ignored] P1:{detected_p1} P2:{detected_p2} - not an upgrade from P1:{self.confirmed_p1_rounds} P2:{self.confirmed_p2_rounds}")
-                pass
+                log_debug(f"🚫 [Ignored] P1:{detected_p1} P2:{detected_p2} - not an upgrade from P1:{self.confirmed_p1_rounds} P2:{self.confirmed_p2_rounds}")
 
         return None
+
 
     def get_current_state(self):
         """Get the current confirmed round state"""
@@ -269,34 +353,36 @@ class RoundState:
         self.confirmed_p2_rounds = 0
         self.candidate_state = None
         self.candidate_start_time = None
-        print("🔄 RoundState reset: P1:0 P2:0")
+        log_state("🔄 RoundState reset: P1:0 P2:0")
 
 class MatchTracker:
-    def __init__(self):
-        self.match_number = 1
+    def __init__(self, start_match_number=1):
+        self.match_number = start_match_number
         self.p1_match_wins = 0
         self.p2_match_wins = 0
 
-        print(f"🏆 MatchTracker initialized: Match #{self.match_number}")
+        log_match(f"🏆 MatchTracker initialized: Match #{self.match_number}")
 
     def check_match_end(self, p1_rounds, p2_rounds):
         """
         Check if current round state indicates match end.
         Returns: None or ("match_over", winner)
         """
+        log_debug(f'Inside match tracker P1:{p1_rounds}, P2:{p2_rounds}')
+        
         if p1_rounds >= 2:
             self.p1_match_wins += 1
             result = ("match_over", "p1")
-            print(f"🏁 MATCH #{self.match_number} OVER: P1 wins {p1_rounds}-{p2_rounds}!")
-            print(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
+            log_match(f"🏁 MATCH #{self.match_number} OVER: P1 wins {p1_rounds}-{p2_rounds}!")
+            log_match(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
             self.match_number += 1
             return result
 
         elif p2_rounds >= 2:
             self.p2_match_wins += 1
             result = ("match_over", "p2")
-            print(f"🏁 MATCH #{self.match_number} OVER: P2 wins {p2_rounds}-{p1_rounds}!")
-            print(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
+            log_match(f"🏁 MATCH #{self.match_number} OVER: P2 wins {p1_rounds}-{p2_rounds}!")
+            log_match(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
             self.match_number += 1
             return result
 
@@ -314,6 +400,7 @@ class MatchTracker:
 def detect_round_indicators(frame):
     """Simple round detection using same pattern as health bars"""
     results = {}
+    debug_info = []
 
     for name, (x1, y1, x2, y2) in ROUND_INDICATORS.items():
         # Extract region (same as health bar pattern)
@@ -330,8 +417,16 @@ def detect_round_indicators(frame):
         else:
             red_pct = 0.0
 
+        # Log P2 detection values to file when they might be active
+        if 'p2' in name and red_pct > 10:
+            debug_info.append(f"{name}:{red_pct:.1f}%")
+
         # Simple threshold: >50% red = won round
-        results[name] = red_pct > 50.0
+        results[name] = red_pct > 30.0
+    
+    # Log all P2 debug info at once to reduce file writes
+    if debug_info:
+        log_debug(f"P2 indicators: {', '.join(debug_info)}")
 
     return results
 
@@ -348,19 +443,19 @@ if LOAD_CHECKPOINT and os.path.exists(LOAD_CHECKPOINT):
     checkpoint = torch.load(LOAD_CHECKPOINT, map_location=DEVICE)
     policy_net.load_state_dict(checkpoint)
     target_net.load_state_dict(checkpoint)
-    print(f"✅ Loaded checkpoint from {LOAD_CHECKPOINT}")
+    log_state(f"✅ Loaded checkpoint from {LOAD_CHECKPOINT}")
 
     # Extract match number from filename if possible
     match = re.search(r'model_match_(\d+)', LOAD_CHECKPOINT)
     if match:
         start_match_number = int(match.group(1)) + 1
-        print(f"   Continuing from match {start_match_number}")
+        log_state(f"   Continuing from match {start_match_number}")
 else:
-    print(os.path.exists(LOAD_CHECKPOINT))
-    print(LOAD_CHECKPOINT)
+    log_debug(f"Checkpoint exists: {os.path.exists(LOAD_CHECKPOINT)}")
+    log_debug(f"Checkpoint path: {LOAD_CHECKPOINT}")
     target_net.load_state_dict(policy_net.state_dict())
     if LOAD_CHECKPOINT:
-        print(f"⚠️  Checkpoint {LOAD_CHECKPOINT} not found, training from scratch")
+        log_state(f"⚠️  Checkpoint {LOAD_CHECKPOINT} not found, training from scratch")
 
 optimizer  = torch.optim.Adam(policy_net.parameters(), lr=LEARNING_RATE)
 buffer = ReplayBuffer(REPLAY_SIZE, EXTRA_DIM)
@@ -381,6 +476,10 @@ round_end_event = threading.Event()
 match_end_event = threading.Event()
 match_number = start_match_number
 
+# Global tracking for TensorBoard
+global_step = 0
+episode_number = 0
+
 # ─── PRODUCER ────────────────────────────────────────────────────────────────
 def producer():
     start = time.perf_counter()
@@ -392,7 +491,11 @@ def producer():
 
 # ─── SINGLE CONSUMER w/ HEALTH & ROUND LOGIC ────────────────────────────────
 def consumer():
-    global match_number
+    global match_number, global_step, episode_number
+    
+    # Log startup
+    log_state("Consumer thread started")
+    log_debug(f"Initial match_number: {match_number}")
     
     # Track how many rounds (episodes) we've seen
     episode_count = 1
@@ -411,9 +514,10 @@ def consumer():
 
     # Initialize robust round and match tracking
     round_state = RoundState()
-    match_tracker = MatchTracker()
+    match_tracker = MatchTracker(start_match_number=match_number)
+    log_debug(f"MatchTracker initialized with match_number: {match_number}")
     
-    # Step 1: create a named window for Q‑values
+    # Step 1: create a named window for Q‑values
     cv2.namedWindow("Q-Values", cv2.WINDOW_AUTOSIZE)
     cv2.namedWindow("Rewards",  cv2.WINDOW_AUTOSIZE)
 
@@ -426,8 +530,11 @@ def consumer():
     cv2.moveWindow("Rewards", win_x+300, win_y)
 
     def write_action(text: str):
-        with open(ACTIONS_FILE, "w") as f:
-            f.write(text)
+        try:
+            with open(ACTIONS_FILE, "w") as f:
+                f.write(text)
+        except Exception as e:
+            log_debug(f"ERROR writing action: {e}")
 
     # ── TRAINING HOOKS ────
     def on_round_end():
@@ -439,17 +546,40 @@ def consumer():
     reward_history = deque(maxlen=100)
 
     round_reward = 0.0
+    round_start_time = time.time()
+    round_steps = 0
+    
+    # Action tracking for distribution
+    action_counts = np.zeros(NUM_ACTIONS)
+    
     # ────────────────────────────────────────────────
     hold_counter   = 0       # frames left to hold the current action
     current_action = None  
     
     # In consumer(), before while loop
-    debug_file = open("debug_transitions.txt", "a")
     write_count = 0
     
     while not stop_event.is_set():
-        frame, ts = frame_q.get()
-
+        # Get frame with timeout to avoid blocking during post-match
+        frame = None
+        ts = None
+        try:
+            frame, ts = frame_q.get(timeout=0.1)
+        except:
+            # No frame available - important for post_match_waiting state
+            if state == "post_match_waiting":
+                # Still need to write actions even without new frames
+                time_rounded = round(time.time(), 2)
+                time_int = int(time_rounded * 100)
+                
+                if time_int % 2 == 0:
+                    write_action("start\n")
+                else:
+                    write_action("kick\n")
+            continue
+        
+        # If we got here, we have a frame - process it normally
+        
         # 1) Compute health % once
         strip = frame[Y_HEALTH:Y_HEALTH+1]
         m1    = cv2.inRange(strip[:, X1_P1:X2_P1], LOWER_BGR, UPPER_BGR)
@@ -459,25 +589,31 @@ def consumer():
 
         # 2) Robust round detection with confirmation (only during active rounds)
         round_result = None
+        detected_p1_rounds = 0
+        detected_p2_rounds = 0
+        
         if state in ["waiting", "active"]:  # Only check rounds when not in post-match
             round_indicators = detect_round_indicators(frame)
 
             # Count current rounds for each player
             detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
             detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
+            
+            # Add debug logging (only every 30 frames to reduce log spam)
+            if global_step % 30 == 0:  # Log every 0.5 seconds instead of every frame
+                log_debug(f"Frame health: P1={pct1:.2f}%, P2={pct2:.2f}%")
+                log_debug(f"Round indicators: {round_indicators}")
+                log_debug(f"Detected rounds: P1={detected_p1_rounds}, P2={detected_p2_rounds}")
 
             # Update round state with new detection
             round_result = round_state.update(detected_p1_rounds, detected_p2_rounds)
-        elif state == "post_match_waiting":
-            # During post-match, skip round detection to avoid noise
-            detected_p1_rounds = detected_p2_rounds = 0
 
         # 3) WAITING → detect round start
         if state == "waiting":
             if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
                 alive_since = alive_since or time.time()
                 if time.time() - alive_since >= 0.5:
-                    print("🚀 ROUND STARTED: Both players at 99%+ health!")
+                    log_round("🚀 ROUND STARTED: Both players at 99%+ health!")
                     write_action("start\n")
                     state = "active"
                     frame_stack.clear()
@@ -486,28 +622,50 @@ def consumer():
                     prev_action = None
                     prev_pct1 = pct1
                     prev_pct2 = pct2
+                    round_start_time = time.time()
+                    round_steps = 0
+                    action_counts.fill(0)
             else:
                 alive_since = None
 
         # 4) POST-MATCH WAITING → continuously alternate start/kick until new round
         elif state == "post_match_waiting":
+            # Debug: Track if we're actually entering this state
+            if not hasattr(consumer, 'post_match_entry_logged'):
+                consumer.post_match_entry_logged = True
+                log_state("ENTERED POST_MATCH_WAITING STATE")
+                consumer.post_match_action_count = 0
+            
             # Continuously alternate between start and kick based on current time
             time_rounded = round(time.time(), 2)
             time_int = int(time_rounded * 100)
 
             if time_int % 2 == 0:
-                write_action("start\n")
+                action_to_write = "start\n"
             else:
-                write_action("kick\n")
+                action_to_write = "kick\n"
+            
+            # Debug: Log every 50th action to confirm it's working
+            consumer.post_match_action_count += 1
+            if consumer.post_match_action_count % 50 == 0:
+                log_debug(f"Post-match action #{consumer.post_match_action_count}: {action_to_write.strip()}")
+            
+            # Actually write the action
+            write_action(action_to_write)
 
             # Wait for both health bars to reach 99%+ (indicating new round started)
             if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
                 alive_since = alive_since or time.time()
                 if time.time() - alive_since >= 0.5:
-                    print(f"🆕 NEW ROUND DETECTED: Both players at 99%+ health! Starting Match #{match_tracker.match_number}")
+                    log_state(f"🆕 NEW ROUND DETECTED: Both players at 99%+ health! Starting Match #{match_tracker.match_number}")
 
                     # Reset round state for the new match
                     round_state.reset()
+
+                    # Reset the debug flag
+                    if hasattr(consumer, 'post_match_entry_logged'):
+                        delattr(consumer, 'post_match_entry_logged')
+                        delattr(consumer, 'post_match_action_count')
 
                     # Transition back to normal flow
                     state = "waiting"
@@ -515,11 +673,11 @@ def consumer():
             else:
                 alive_since = None
 
-            # Skip frame processing and learning during post-match
-            # (Nothing meaningful to learn from menu screens)
-
         # 5) ACTIVE → DQN actions + death detection
         elif state == "active":
+            round_steps += 1
+            global_step += 1
+            
             # 1) Always append the new pre-processed frame
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             img = cv2.resize(gray, CNN_SIZE, interpolation=cv2.INTER_NEAREST)
@@ -548,6 +706,11 @@ def consumer():
                     opp_damage = prev_pct2 - pct2
                     reward = opp_damage - our_damage
                     round_reward += reward
+                    
+                    # Log step reward
+                    writer.add_scalar("reward/step", reward, global_step)
+                    writer.add_scalar("health/p1", pct1, global_step)
+                    writer.add_scalar("health/p2", pct2, global_step)
 
                 # D) Store the full transition in replay buffer
                 #    (prev_state, prev_extras, prev_action, reward, next_state, next_extras, done=False)
@@ -566,13 +729,30 @@ def consumer():
                 state_img    = torch.from_numpy(next_state).unsqueeze(0).to(DEVICE)
                 extras_tensor= torch.from_numpy(next_extras).unsqueeze(0).to(DEVICE)
                 eps = 0.01 if TEST_MODE else max(0.01, 0.1 - 0.1 * (buffer.len / 10000))
+                
+                # Log epsilon
+                writer.add_scalar("exploration/epsilon", eps, global_step)
+                
                 if random.random() < eps:
                     chosen = random.randrange(NUM_ACTIONS)
                 else:
                     with torch.no_grad():
                         q = policy_net(state_img, extras_tensor)
+                        
+                        # Log Q-values for each action
+                        for i, action_name in enumerate(ACTIONS):
+                            writer.add_scalar(f"q_values/{action_name}", q[0, i].item(), global_step)
+                        
+                        # Log Q-value statistics
+                        writer.add_scalar("q_values/mean", q.mean().item(), global_step)
+                        writer.add_scalar("q_values/max", q.max().item(), global_step)
+                        writer.add_scalar("q_values/min", q.min().item(), global_step)
+                        writer.add_scalar("q_values/std", q.std().item(), global_step)
+                        
                         chosen = int(q.argmax(1).item())
+                
                 current_action = chosen
+                action_counts[chosen] += 1
                 hold_counter   = FRAME_STACK
 
                 # F) Roll forward for next decision
@@ -605,11 +785,27 @@ def consumer():
 
 
         # Check for confirmed round wins
-        if state == "active" and round_result and round_result[0] == "round_won":
+        if round_result and round_result[0] == "round_won" and state in ["active", "waiting"]:
+            log_debug(f"Round win detected in state: {state}")
+            episode_number += 1
             
-            print(f"[Episode] Round #{episode_count} total_reward={round_reward:.2f}")
+            log_round(f"[Episode] Round #{episode_count} total_reward={round_reward:.2f}")
             episode_count += 1
-            # 1) push this round’s total reward
+            
+            # Log episode metrics
+            round_duration = time.time() - round_start_time
+            writer.add_scalar("episode/reward", round_reward, episode_number)
+            writer.add_scalar("episode/length_steps", round_steps, episode_number)
+            writer.add_scalar("episode/length_seconds", round_duration, episode_number)
+            
+            # Log action distribution for this episode
+            if action_counts.sum() > 0:
+                action_probs = action_counts / action_counts.sum()
+                for i, action_name in enumerate(ACTIONS):
+                    writer.add_scalar(f"actions/episode_distribution/{action_name}", 
+                                    action_probs[i], episode_number)
+            
+            # 1) push this round's total reward
             reward_history.append(round_reward)
             round_reward = 0.0
 
@@ -637,38 +833,50 @@ def consumer():
             cv2.waitKey(1)
             
             _, winner, p1_rounds, p2_rounds = round_result
+            log_debug(f"Round result details - Winner: {winner}, P1 rounds: {p1_rounds}, P2 rounds: {p2_rounds}")
 
             # Final transition with done=True and terminal reward
             if prev_state is not None and prev_action is not None:
                 final_reward = 10.0 if winner == "p1" else -10.0
                 buffer.add(prev_state, prev_extra_feats, prev_action, final_reward, prev_state, prev_extra_feats, True)
+                
+                # Log round outcome
+                writer.add_scalar("episode/win", 1.0 if winner == "p1" else 0.0, episode_number)
 
             # round-ended hook
             on_round_end()
 
             # Check for match end
             match_result = match_tracker.check_match_end(p1_rounds, p2_rounds)
+            log_debug(f"Match check result: {match_result} for rounds P1:{p1_rounds} P2:{p2_rounds}")
 
             if match_result and match_result[0] == "match_over":
                 # Match ended - save model and enter post-match navigation
                 on_match_end()
-                print(f"🎯 Match over! Entering post-match navigation mode...")
+                log_state(f"🎯 Match over! Entering post-match navigation mode...")
+                log_state(f"Changing state from '{state}' to 'post_match_waiting'")
 
                 state = "post_match_waiting"
                 alive_since = death_since = None
             else:
                 # Round ended but match continues - back to waiting
+                log_debug(f"Round ended but match continues - going back to waiting state")
                 state = "waiting"
                 alive_since = death_since = None
 
         # Save results (always track health regardless of state)
-        results.append((time.time(), pct1, pct2))
+        if frame is not None:
+            results.append((time.time(), pct1, pct2))
 
-        # Save screenshots
-        if len(screenshots) < MAX_FRAMES:
+        # Save screenshots (only if we have a frame)
+        if frame is not None and len(screenshots) < MAX_FRAMES:
             screenshots.append(frame.copy())
 
-        frame_q.task_done()
+        # Mark task as done only if we got a frame
+        try:
+            frame_q.task_done()
+        except:
+            pass
 
 # ─── ENHANCED LEARNER WITH CONTINUOUS TRAINING ─────────────────────────────
 def learner():
@@ -676,12 +884,12 @@ def learner():
     train_steps = 0
 
     if TEST_MODE:
-        print("[Learner] TEST MODE - Training disabled")
+        log_learner("[Learner] TEST MODE - Training disabled")
         while not stop_event.is_set():
             # Still check for match end to save current model state
             if match_end_event.wait(timeout=1.0):
                 match_end_event.clear()
-                print(f"[Learner] Match ended in test mode, match {match_number}")
+                log_learner(f"[Learner] Match ended in test mode, match {match_number}")
                 match_number += 1
         return
 
@@ -691,67 +899,129 @@ def learner():
             # Train for a batch
             states, extras, actions, rewards, next_states, next_extras, dones = buffer.sample(BATCH_SIZE)
 
+            # Analyze buffer periodically
+            if train_steps % 1000 == 0 and buffer.len > 0:
+                # Log buffer statistics
+                rewards_in_buffer = buffer.rewards[:buffer.len]
+                writer.add_scalar("buffer/reward_mean", rewards_in_buffer.mean(), train_steps)
+                writer.add_scalar("buffer/reward_std", rewards_in_buffer.std(), train_steps)
+                writer.add_scalar("buffer/reward_min", rewards_in_buffer.min(), train_steps)
+                writer.add_scalar("buffer/reward_max", rewards_in_buffer.max(), train_steps)
+                
+                # Log action distribution in buffer
+                actions_in_buffer = buffer.actions[:buffer.len]
+                for i, action_name in enumerate(ACTIONS):
+                    action_pct = (actions_in_buffer == i).sum() / len(actions_in_buffer)
+                    writer.add_scalar(f"buffer/action_distribution/{action_name}", 
+                                    action_pct, train_steps)
+                
+                # Log done percentage
+                dones_in_buffer = buffer.dones[:buffer.len]
+                writer.add_scalar("buffer/done_percentage", 
+                                dones_in_buffer.sum() / len(dones_in_buffer), train_steps)
+
             with torch.no_grad():
                 next_q = target_net(next_states, next_extras).max(1)[0]
                 target = rewards + GAMMA * next_q * (1 - dones.float())
+                
+                # Log TD error statistics
+                current_q = policy_net(states, extras).gather(1, actions.unsqueeze(1)).squeeze(1)
+                td_error = (target - current_q).abs()
+                writer.add_scalar("training/td_error_mean", td_error.mean().item(), train_steps)
+                writer.add_scalar("training/td_error_max", td_error.max().item(), train_steps)
 
             q_vals = policy_net(states, extras).gather(1, actions.unsqueeze(1)).squeeze(1)
             loss   = F.mse_loss(q_vals, target)
 
             optimizer.zero_grad()
             loss.backward()
-            total_norm = torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
+            
+            # Log gradient statistics before clipping
+            total_grad_norm = 0
+            for p in policy_net.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2).item()
+                    total_grad_norm += param_norm ** 2
+            total_grad_norm = total_grad_norm ** 0.5
+            writer.add_scalar("gradients/norm_before_clip", total_grad_norm, train_steps)
+            
+            # Clip gradients
+            clipped_norm = torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=1.0)
+            writer.add_scalar("gradients/norm_after_clip", clipped_norm.item(), train_steps)
+            
             optimizer.step()
             
+            # Log comprehensive training metrics
             writer.add_scalar("loss/train", loss.item(), train_steps)
+            writer.add_scalar("training/learning_rate", LEARNING_RATE, train_steps)
             writer.add_scalar("buffer/size", buffer.len, train_steps)
+            writer.add_scalar("buffer/utilization", buffer.len / buffer.size, train_steps)
+
+            # Log layer-wise statistics periodically
+            if train_steps % 500 == 0:
+                for name, param in policy_net.named_parameters():
+                    if param.requires_grad and param.grad is not None:
+                        writer.add_histogram(f"weights/{name}", param.data, train_steps)
+                        writer.add_histogram(f"gradients/{name}", param.grad.data, train_steps)
+                        writer.add_scalar(f"weights/{name}/mean", param.data.mean().item(), train_steps)
+                        writer.add_scalar(f"weights/{name}/std", param.data.std().item(), train_steps)
 
             train_steps += 1
             # Log the training loss and buffer occupancy periodically
             if train_steps % 100 == 0:
-                print(f"[Learner] step={train_steps:6d} "
+                log_learner(f"[Learner] step={train_steps:6d} "
                     f"loss={loss.item():.4f} "
                     f"buffer_len={buffer.len} "
-                    f"grad_norm={total_norm:.4f}")
+                    f"grad_norm={total_grad_norm:.4f}")
 
             # Sync target network every N steps (not per round)
             if train_steps % TARGET_SYNC == 0:
                 target_net.load_state_dict(policy_net.state_dict())
-                print(f"[Learner] Synced target network at step {train_steps}")
+                log_learner(f"[Learner] Synced target network at step {train_steps}")
+                writer.add_scalar("training/target_sync", 1, train_steps)
 
             # Log training progress
             if train_steps % 100 == 0:
-                print(f"[Learner] Step {train_steps}, Loss: {loss.item():.4f}, Buffer: {buffer.len}")
+                log_learner(f"[Learner] Step {train_steps}, Loss: {loss.item():.4f}, Buffer: {buffer.len}")
 
         # Check for match end to save model
         if match_end_event.wait(timeout=0.01):
             match_end_event.clear()
             model_path = f"{MODEL_DIR}/model_match_{match_number}.pth"
             torch.save(policy_net.state_dict(), model_path)
-            print(f"[Learner] Saved model to {model_path}")
+            log_learner(f"[Learner] Saved model to {model_path}")
+            
+            # Log match completion
+            writer.add_scalar("training/match_completed", match_number, train_steps)
+            
             match_number += 1
             # Don't clear buffer - preserve experience!
-            print(f"[Learner] Buffer preserved with {buffer.len} samples")
+            log_learner(f"[Learner] Buffer preserved with {buffer.len} samples")
 
         # Small sleep to prevent CPU spinning
         time.sleep(0.001)
 
 # ─── MAIN ───────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print(f"Starting RL agent with device: {DEVICE}")
-    print(f"Region: {REGION}")
-    print(f"Health bar locations - P1: {X1_P1}-{X2_P1}, P2: {X1_P2}-{X2_P2}")
-    print(f"Learning rate: {LEARNING_RATE}")
-    print(f"Min buffer size: {MIN_BUFFER_SIZE}, Target sync: {TARGET_SYNC} steps")
-    print(f"Round detection: Simplified rectangle monitoring")
-    print(f"Round indicators: {len(ROUND_INDICATORS)} positions")
-    if LOAD_CHECKPOINT:
-        print(f"Checkpoint: {LOAD_CHECKPOINT}")
-    if TEST_MODE:
-        print("MODE: TEST (training disabled)")
+    log_state("="*60)
+    if ENABLE_LOGGING:
+        log_state(f"Starting RL agent - Log file: {log_filename}")
     else:
-        print("MODE: TRAINING")
-    print("-" * 50)
+        log_state("Starting RL agent - File logging DISABLED")
+    log_state(f"Device: {DEVICE}")
+    log_state(f"Region: {REGION}")
+    log_state(f"Health bar locations - P1: {X1_P1}-{X2_P1}, P2: {X1_P2}-{X2_P2}")
+    log_state(f"Learning rate: {LEARNING_RATE}")
+    log_state(f"Min buffer size: {MIN_BUFFER_SIZE}, Target sync: {TARGET_SYNC} steps")
+    log_state(f"Round detection: Simplified rectangle monitoring")
+    log_state(f"Round indicators: {len(ROUND_INDICATORS)} positions")
+    if LOAD_CHECKPOINT:
+        log_state(f"Checkpoint: {LOAD_CHECKPOINT}")
+    if TEST_MODE:
+        log_state("MODE: TEST (training disabled)")
+    else:
+        log_state("MODE: TRAINING")
+    log_state("="*60)
 
     # start threads
     t_p = threading.Thread(target=producer, name="Producer", daemon=True)
@@ -763,7 +1033,7 @@ if __name__ == "__main__":
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        log_state("\nShutting down...")
         stop_event.set()
 
     writer.close()
@@ -775,9 +1045,9 @@ if __name__ == "__main__":
     t_l.join()
 
     # save outputs
-    os.makedirs("screenshots", exist_ok=True)
-    for i, f in enumerate(screenshots):
-        Image.fromarray(f[..., ::-1]).save(f"screenshots/frame_{i:04d}.png")
+    # os.makedirs("screenshots", exist_ok=True)
+    # for i, f in enumerate(screenshots):
+    #     Image.fromarray(f[..., ::-1]).save(f"screenshots/frame_{i:04d}.png")
 
     with open(LOG_CSV, "w", newline="") as f:
         w = csv.writer(f)
@@ -786,4 +1056,6 @@ if __name__ == "__main__":
 
     camera.stop()
     cv2.destroyAllWindows()  # Close any debug windows
-    print(f"\nSaved {len(screenshots)} screenshots and {len(results)} health readings")
+    log_state(f"\nSaved {len(screenshots)} screenshots and {len(results)} health readings")
+    if ENABLE_LOGGING:
+        log_state(f"Log file saved to: {log_filename}")

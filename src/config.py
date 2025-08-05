@@ -1,3 +1,5 @@
+import numpy as np
+
 # ─── CAPTURE REGION ───────────────────────────────────────────────
 REGION       = (0, 0, 624, 548)
 Y_HEALTH     = 116
@@ -31,3 +33,29 @@ LOG_DIR        = '../logs'
 MAX_FRAMES = 1000
 HEALTH_LIMIT = 99.0
 TEST_MODE  = False
+
+ROUND_INDICATORS = {
+    'p1_round1': (270, 135, 278, 140),
+    'p1_round2': (245, 135, 253, 140),
+    'p2_round1': (373, 135, 381, 140),
+    'p2_round2': (396, 135, 404, 140),
+}
+RED_BGR_LOWER   = np.array([0, 0, 150], dtype=np.uint8)
+RED_BGR_UPPER   = np.array([60, 60, 255], dtype=np.uint8)
+
+# ─── TRANSFORM STATE & BLACK‐PIXEL HELPERS ─────────────────────────────────
+PIXEL_RECTS = [
+    ("P1_R1_pixel", 71, 475, 72, 476),
+    ("P2_R2_pixel", 520, 475, 521, 476),
+]
+STATE_MAP = {
+    (200, 200, 200): "can transform",
+    ( 48,  48, 248): "transformed",
+    (240, 128,   0): "cannot transform",
+}
+
+AREA_RECTS = [
+    ("P1_R1_area", 71, 480, 177, 481),
+    ("P2_R2_area", 469, 480, 575, 481),
+]
+BLACK_BGR = np.array([0, 0, 8], dtype=np.uint8)
