@@ -21,7 +21,7 @@ from PIL import Image
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
-
+action_to_send = "start\n"
 # ─── LOGGING SETUP ─────────────────────────────────────────────────────────
 # EASY TOGGLE: Set to False to disable file logging
 ENABLE_LOGGING = True
@@ -118,11 +118,11 @@ BATCH_SIZE      = 32
 TARGET_SYNC     = 1000
 REPLAY_SIZE     = 10000
 MIN_BUFFER_SIZE = 100
-HEALTH_LIMIT    = 99.0
+HEALTH_LIMIT    = 98
 
 LEARNING_RATE   = 1e-4
 
-MODEL_DIR = "../models"
+MODEL_DIR = "models"
 os.makedirs(MODEL_DIR, exist_ok=True)
 MODEL_NUMBER = 126
 os.makedirs(MODEL_DIR, exist_ok=True)
@@ -137,6 +137,15 @@ ROUND_INDICATORS = {
     'p2_round1': (373, 135, 381, 140),
     'p2_round2': (396, 135, 404, 140),
 }
+LOW1 = np.array([0, 70, 50], dtype=np.uint8)
+HIGH1 = np.array([10, 255, 255], dtype=np.uint8)
+LOW2 = np.array([170, 70, 50], dtype=np.uint8)
+HIGH2 = np.array([180, 255, 255], dtype=np.uint8)
+
+# HSV range for blue indicators
+BLUE_LOW = np.array([100, 50, 50], dtype=np.uint8)
+BLUE_HIGH = np.array([130, 255, 255], dtype=np.uint8)
+
 RED_BGR_LOWER   = np.array([0, 0, 150], dtype=np.uint8)
 RED_BGR_UPPER   = np.array([60, 60, 255], dtype=np.uint8)
 
@@ -261,116 +270,242 @@ class ReplayBuffer:
 # ─── ROBUST ROUND & MATCH LOGIC ───────────────────────────────────────────
 class RoundState:
     def __init__(self):
-        # Confirmed state (persistent, can only increase)
-        self.confirmed_p1_rounds = 0
-        self.confirmed_p2_rounds = 0
-
-        # Candidate state (needs confirmation)
-        self.candidate_state = None
-        self.candidate_start_time = None
-        self.CONFIRMATION_TIME = 0.5  # Keep at 0.5s for stability
-
-        # Track if we've recently confirmed a round
-        self.last_round_end_time = None
+        # confirmed round counts
+        self.confirmed = {'p1': 0, 'p2': 0}
         
-        log_state("🔄 RoundState initialized: P1:0 P2:0")
+        # NEW: Baseline-based round detection
+        self.baseline_indicators = None  # Captured at round start
+        self.pending_round_changes = {'p1': 0, 'p2': 0}  # Changes detected during death period
+        self.in_death_period = False  # Are both players currently at 0% health?
+        
+        # OLD: Timer-based system (keeping for compatibility/fallback)
+        self.cand = {
+            'p1': {'count': None, 'start': None},
+            'p2': {'count': None, 'start': None},
+        }
+        self.CONFIRMATION_TIME = 1.5
+
+        # track when we last confirmed a round
+        self.last_round_end_time = None
+
+        log_state(f"🔄 RoundState initialized: P1:0 P2:0 (baseline system)")
+
+    def clear_candidate(self, player):
+        self.cand[player] = {'count': None, 'start': None}
+
+    def clear_all_candidates(self):
+        self.clear_candidate('p1')
+        self.clear_candidate('p2')
+
+    def has_round_recently_ended(self, timeout=2.0):
+        if self.last_round_end_time is None:
+            return False
+        return (time.time() - self.last_round_end_time) < timeout
+
+    def get_current_state(self):
+        """Return the current confirmed round counts."""
+        return self.confirmed['p1'], self.confirmed['p2']
+
+    def reset(self):
+        """Reset round state for a new match."""
+        self.confirmed = {'p1': 0, 'p2': 0}
+        self.baseline_indicators = None
+        self.pending_round_changes = {'p1': 0, 'p2': 0}
+        self.in_death_period = False
+        self.clear_all_candidates()
+        self.last_round_end_time = None
+        log_state(f"🔄 RoundState reset for new match: P1:0 P2:0 (baseline cleared)")
+        
+    def capture_baseline(self, indicator_states):
+        """Capture current indicator states as baseline for this round"""
+        self.baseline_indicators = indicator_states.copy()
+        log_state(f"📸 Baseline captured: {indicator_states}")
+        
+    def check_for_changes(self, current_indicators, both_at_zero):
+        """Compare current indicators to baseline and update pending changes"""
+        if self.baseline_indicators is None:
+            log_debug("No baseline set - capturing current as baseline")
+            self.capture_baseline(current_indicators)
+            return
+            
+        # Update death period status
+        self.in_death_period = both_at_zero
+        
+        # Only process changes during death period
+        if not self.in_death_period:
+            return
+            
+        # Check for changes from baseline
+        p1_baseline_rounds = sum(1 for k, v in self.baseline_indicators.items() 
+                                if k.startswith('p1_') and v == 'red')
+        p2_baseline_rounds = sum(1 for k, v in self.baseline_indicators.items() 
+                                if k.startswith('p2_') and v == 'red')
+        
+        p1_current_rounds = sum(1 for k, v in current_indicators.items() 
+                               if k.startswith('p1_') and v == 'red')
+        p2_current_rounds = sum(1 for k, v in current_indicators.items() 
+                               if k.startswith('p2_') and v == 'red')
+        
+        # Detect changes
+        p1_change = p1_current_rounds - p1_baseline_rounds
+        p2_change = p2_current_rounds - p2_baseline_rounds
+        
+        # Update pending changes if we detect increments
+        if p1_change > 0 and p1_change != self.pending_round_changes['p1']:
+            log_debug(f"🔍 P1 indicator change detected: +{p1_change} from baseline (during death)")
+            self.pending_round_changes['p1'] = p1_change
+            
+        if p2_change > 0 and p2_change != self.pending_round_changes['p2']:
+            log_debug(f"🔍 P2 indicator change detected: +{p2_change} from baseline (during death)")
+            self.pending_round_changes['p2'] = p2_change
+            
+    def confirm_pending_changes(self):
+        """Apply any pending changes and return winner info"""
+        if self.pending_round_changes['p1'] == 0 and self.pending_round_changes['p2'] == 0:
+            return None
+            
+        # Validate that only one player can win a round
+        if self.pending_round_changes['p1'] > 0 and self.pending_round_changes['p2'] > 0:
+            log_debug("⚠️ INVALID: Both players have pending changes - ignoring all")
+            self.pending_round_changes = {'p1': 0, 'p2': 0}
+            return None
+            
+        # Apply the change
+        winner = None
+        if self.pending_round_changes['p1'] > 0:
+            # Validate increment is exactly 1
+            if self.pending_round_changes['p1'] == 1:
+                self.confirmed['p1'] += 1
+                winner = 'p1'
+                log_round(f"🎯 ROUND CONFIRMED: P1 won! (P1:{self.confirmed['p1']} P2:{self.confirmed['p2']})")
+            else:
+                log_debug(f"⚠️ INVALID: P1 pending change is {self.pending_round_changes['p1']}, not 1")
+                
+        if self.pending_round_changes['p2'] > 0:
+            # Validate increment is exactly 1
+            if self.pending_round_changes['p2'] == 1:
+                self.confirmed['p2'] += 1
+                winner = 'p2'
+                log_round(f"🎯 ROUND CONFIRMED: P2 won! (P1:{self.confirmed['p1']} P2:{self.confirmed['p2']})")
+            else:
+                log_debug(f"⚠️ INVALID: P2 pending change is {self.pending_round_changes['p2']}, not 1")
+        
+        # Clear pending changes
+        self.pending_round_changes = {'p1': 0, 'p2': 0}
+        
+        # Update timing
+        if winner:
+            self.last_round_end_time = time.time()
+            return ("round_won", winner, self.confirmed['p1'], self.confirmed['p2'])
+        
+        return None
+    
+    def update_with_baseline(self, indicator_states, both_at_zero):
+        """NEW: Baseline-based update method"""
+        # Apply 5-second cooldown
+        if self.has_round_recently_ended(timeout=5.0):
+            return None
+            
+        # Check for changes against baseline
+        self.check_for_changes(indicator_states, both_at_zero)
+        
+        # Don't return anything here - confirmation happens at round start
+        return None
+    
+    def on_round_start(self, indicator_states):
+        """Called when health restoration detected - confirms pending and captures new baseline"""
+        # First, confirm any pending changes from previous round
+        result = self.confirm_pending_changes()
+        
+        # Then capture new baseline for starting round
+        self.capture_baseline(indicator_states)
+        
+        return result
 
     def update(self, detected_p1, detected_p2):
         """
         Update round state with new detection.
         Returns: None or ("round_won", winner, p1_rounds, p2_rounds)
         """
-        current_time = time.time()
-        new_state = (detected_p1, detected_p2)
+        now = time.time()
+        det = {'p1': detected_p1, 'p2': detected_p2}
+        
+        # COOLDOWN: Don't process if we recently confirmed a round
+        if self.has_round_recently_ended(timeout=5.0):
+            log_debug(f"Round cooldown active - ignoring detection for {5.0 - (now - self.last_round_end_time):.1f}s more")
+            return None
 
-        # Log all detections to file for debugging (only if changed)
-        if (detected_p1, detected_p2) != (self.confirmed_p1_rounds, self.confirmed_p2_rounds):
-            log_debug(f"Round detection: P1={detected_p1}, P2={detected_p2}, confirmed=(P1:{self.confirmed_p1_rounds}, P2:{self.confirmed_p2_rounds})")
+        # debug: log whenever raw detection differs from confirmed
+        if (detected_p1, detected_p2) != (self.confirmed['p1'], self.confirmed['p2']):
+            log_debug(f"Round detection: P1={detected_p1}, P2={detected_p2}, "
+                      f"confirmed=(P1:{self.confirmed['p1']}, P2:{self.confirmed['p2']})")
 
-        # Check if this is a valid upgrade (monotonic rule)
-        if (detected_p1 >= self.confirmed_p1_rounds and
-            detected_p2 >= self.confirmed_p2_rounds):
-
-            # Check if this is actually an upgrade (not same state)
-            if (detected_p1 > self.confirmed_p1_rounds or
-                detected_p2 > self.confirmed_p2_rounds):
-
-                if new_state == self.candidate_state:
-                    # Same candidate - check if enough time has passed
-                    elapsed = current_time - self.candidate_start_time
-
-                    if elapsed >= self.CONFIRMATION_TIME:
-                        # Guard against both players "winning" simultaneously
-                        if detected_p1 > self.confirmed_p1_rounds and detected_p2 > self.confirmed_p2_rounds:
-                            log_debug(f"⚠️ Ambiguous round: both P1 and P2 advanced ({detected_p1}-{detected_p2}); ignoring")
-                            self.candidate_state = None
-                            self.candidate_start_time = None
-                            return None
-
-                        # CONFIRMED! Update persistent state
-                        old_p1, old_p2 = self.confirmed_p1_rounds, self.confirmed_p2_rounds
-                        self.confirmed_p1_rounds = detected_p1
-                        self.confirmed_p2_rounds = detected_p2
-                        
-                        # Track when this round ended
-                        self.last_round_end_time = current_time
-
-                        # Determine who won the round (check P2 first)
-                        if detected_p2 > old_p2:
-                            winner = "p2"
-                            log_round(f"🎯 ROUND CONFIRMED: P2 won! (P1:{detected_p1} P2:{detected_p2})")
-                        elif detected_p1 > old_p1:
-                            winner = "p1"
-                            log_round(f"🎯 ROUND CONFIRMED: P1 won! (P1:{detected_p1} P2:{detected_p2})")
-                        else:
-                            # This shouldn't happen due to earlier checks, but just in case
-                            log_debug(f"⚠️ Round confirmed but no winner detected?")
-                            winner = "unknown"
-
-                        # Clear candidate
-                        self.candidate_state = None
-                        self.candidate_start_time = None
-
-                        value_tuple = ("round_won", winner, detected_p1, detected_p2)
-                        log_round(f'Round confirmation successful: {value_tuple}')
-                        return value_tuple
-                    else:
-                        # Still waiting for confirmation
-                        if elapsed < 0.1 or int(elapsed * 10) != int((elapsed - 0.016) * 10):
-                            log_debug(f"⏳ [Candidate] P1:{detected_p1} P2:{detected_p2} ({elapsed:.1f}s) - waiting for confirmation...")
+        # 1) HIGH WATERMARK: Only consider as candidate if HIGHER than confirmed
+        for p in ('p1','p2'):
+            if det[p] > self.confirmed[p]:
+                # VALIDATION: Rounds must increment by exactly 1
+                if det[p] != self.confirmed[p] + 1:
+                    log_debug(f"⚠️ INVALID: {p.upper()} rounds jumped from {self.confirmed[p]} to {det[p]} - ignoring!")
+                    self.clear_candidate(p)
+                    continue
+                    
+                c = self.cand[p]
+                # same candidate continuing?
+                if c['count'] == det[p]:
+                    elapsed = now - c['start']
+                    # occasional debug heartbeat
+                    if elapsed < 0.1 or int(elapsed * 10) != int((elapsed - 0.016) * 10):
+                        log_debug(f"⏳ [Candidate {p.upper()}] {det['p1']}-{det['p2']} "
+                                  f"({elapsed:.1f}s) - waiting for confirmation...")
                 else:
-                    # New candidate state
-                    self.candidate_state = new_state
-                    self.candidate_start_time = current_time
-                    log_debug(f"🔍 [New Candidate] P1:{detected_p1} P2:{detected_p2} - starting confirmation timer")
+                    # new candidate for this player
+                    self.cand[p] = {'count': det[p], 'start': now}
+                    log_debug(f"🔍 [New Candidate {p.upper()}] count={det[p]} > confirmed={self.confirmed[p]} - starting timer")
+            else:
+                # if detected is not higher than confirmed, clear candidate
+                if self.cand[p]['count'] is not None:
+                    log_debug(f"🚫 [Cleared Candidate {p.upper()}] detected {det[p]} <= "
+                              f"confirmed {self.confirmed[p]}")
+                self.clear_candidate(p)
 
-        else:
-            # Not an upgrade - ignore (noise/temporary false positive)
-            if (detected_p1 < self.confirmed_p1_rounds or
-                detected_p2 < self.confirmed_p2_rounds):
-                log_debug(f"🚫 [Ignored] P1:{detected_p1} P2:{detected_p2} - not an upgrade from P1:{self.confirmed_p1_rounds} P2:{self.confirmed_p2_rounds}")
+        # 2) collect any timers past CONFIRMATION_TIME
+        ready = [
+            (p, data['start'])
+            for p, data in self.cand.items()
+            if data['count'] is not None and (now - data['start']) >= self.CONFIRMATION_TIME
+        ]
+        if not ready:
+            return None
 
-        return None
+        # 3) pick whoever's timer started first (tie-breaker)
+        winner, start_ts = min(ready, key=lambda x: x[1])
 
-    def has_round_recently_ended(self, timeout=2.0):
-        """Check if a round ended within the timeout period"""
-        if self.last_round_end_time is None:
-            return False
-        return (time.time() - self.last_round_end_time) < timeout
+        # guard against both firing exactly together
+        if len(ready) > 1:
+            log_debug(f"⚠️ Both timers ready—choosing first player: {winner.upper()}")
 
-    def get_current_state(self):
-        """Get the current confirmed round state"""
-        return self.confirmed_p1_rounds, self.confirmed_p2_rounds
+        # 4) confirm the win - but validate first
+        old_p1, old_p2 = self.confirmed['p1'], self.confirmed['p2']
+        new_count = self.cand[winner]['count']
+        
+        # Final validation before confirming
+        if new_count != self.confirmed[winner] + 1:
+            log_debug(f"⚠️ FINAL VALIDATION FAILED: {winner.upper()} would jump from {self.confirmed[winner]} to {new_count}")
+            self.clear_all_candidates()
+            return None
+            
+        self.confirmed[winner] = new_count
+        self.last_round_end_time = now
+        log_round(f"🎯 ROUND CONFIRMED: {winner.upper()} won! "
+                  f"(P1:{self.confirmed['p1']} P2:{self.confirmed['p2']}) "
+                  f"[was P1:{old_p1} P2:{old_p2}]")
 
-    def reset(self):
-        """Reset round state for new match"""
-        self.confirmed_p1_rounds = 0
-        self.confirmed_p2_rounds = 0
-        self.candidate_state = None
-        self.candidate_start_time = None
-        self.last_round_end_time = None
-        log_state("🔄 RoundState reset: P1:0 P2:0")
+        # clear all so no ghost confirmations
+        self.clear_all_candidates()
 
+        return ("round_won", winner, self.confirmed['p1'], self.confirmed['p2'])
+
+# ─── MatchTracker ROUND & MATCH LOGIC ───────────────────────────────────────────
 class MatchTracker:
     def __init__(self, start_match_number=1):
         self.match_number = start_match_number
@@ -414,37 +549,59 @@ class MatchTracker:
         }
 
 def detect_round_indicators(frame):
-    """Simple round detection using same pattern as health bars"""
+    """Round detection using HSV color space, returns color states (blue/red)"""
     results = {}
+    states = {}
     debug_info = []
 
     for name, (x1, y1, x2, y2) in ROUND_INDICATORS.items():
-        # Extract region (same as health bar pattern)
+        # Extract region
         region = frame[y1:y2, x1:x2]
 
-        # Create mask for red pixels (same pattern as health bar)
-        mask = cv2.inRange(region, RED_BGR_LOWER, RED_BGR_UPPER)
+        # Convert to HSV for more reliable color detection
+        hsv_region = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
 
-        # Count red pixels and calculate percentage
+        # Red detection: wraps around in HSV, so we need two masks
+        red_mask1 = cv2.inRange(hsv_region, LOW1, HIGH1)
+        red_mask2 = cv2.inRange(hsv_region, LOW2, HIGH2)
+        red_mask = cv2.bitwise_or(red_mask1, red_mask2)
+        
+        # Blue detection
+        blue_mask = cv2.inRange(hsv_region, BLUE_LOW, BLUE_HIGH)
+
+        # Count pixels and calculate percentages
         total_pixels = region.shape[0] * region.shape[1]
         if total_pixels > 0:
-            red_pixels = cv2.countNonZero(mask)
+            red_pixels = cv2.countNonZero(red_mask)
             red_pct = red_pixels / total_pixels * 100.0
+            
+            blue_pixels = cv2.countNonZero(blue_mask)
+            blue_pct = blue_pixels / total_pixels * 100.0
         else:
             red_pct = 0.0
+            blue_pct = 0.0
 
-        # Log P2 detection values to file when they might be active
-        if 'p2' in name and red_pct > 10:
-            debug_info.append(f"{name}:{red_pct:.1f}%")
+        # Determine state: prioritize red over blue
+        if red_pct > 85.0:
+            states[name] = 'red'
+            results[name] = True  # Keep backward compatibility
+        elif blue_pct > 30.0:  # Lower threshold for blue
+            states[name] = 'blue'
+            results[name] = False
+        else:
+            states[name] = 'unknown'
+            results[name] = False
 
-        # Simple threshold: >30% red = won round
-        results[name] = red_pct > 30.0
+        # Debug logging for calibration
+        if red_pct > 5 or blue_pct > 5:
+            debug_info.append(f"{name}: R:{red_pct:.1f}% B:{blue_pct:.1f}% -> {states[name]}")
     
-    # Log all P2 debug info at once to reduce file writes
+    # Log all debug info at once to reduce file writes
     if debug_info:
-        log_debug(f"P2 indicators: {', '.join(debug_info)}")
+        log_debug(f"Round indicators: {', '.join(debug_info)}")
 
-    return results
+    # Return both for compatibility: results (bool) and states (color)
+    return results, states
 
 # ─── SETUP ───────────────────────────────────────────────────────────────
 import re
@@ -516,15 +673,24 @@ def consumer():
     # Track how many rounds (episodes) we've seen
     episode_count = 1
 
-    # MODIFIED STATE MACHINE:
+    # STATE MACHINE with new fallback state:
     # - "waiting_for_match": Waiting for first round of a new match
     # - "waiting_for_round": Previous round ended, waiting for next round
     # - "active": Round is in progress
     # - "post_match_waiting": Match ended, navigating menus
+    # - "health_detection_lost": Cannot detect health bars, fallback mode
     state = "waiting_for_match"
+    
+    # IMPORTANT: Track state before entering fallback
+    state_before_fallback = None
     
     alive_since  = None
     death_since  = None
+    
+    # Health detection fallback tracking
+    health_lost_since = None
+    HEALTH_LOST_TIMEOUT = 5.0  # 5 seconds before entering fallback mode
+    fallback_action_count = 0
 
     # Proper state tracking for rewards
     prev_state   = None
@@ -533,6 +699,11 @@ def consumer():
     prev_pct1    = 100.0
     prev_pct2    = 100.0
     
+    # Health-based round detection
+    both_at_zero_since = None
+    DEATH_THRESHOLD = 0.0      # Both must be exactly 0%
+    ALIVE_THRESHOLD = 98.0     # Both must be >99% to confirm round start
+    ZERO_HEALTH_DURATION = 1.0 # Must be at 0% for 1 second
 
     # Initialize robust round and match tracking
     round_state = RoundState()
@@ -585,24 +756,30 @@ def consumer():
     post_match_entry_logged = False
     post_match_action_count = 0
     
+    # Health logging timer
+    last_health_log_time = time.time()
+    
     while not stop_event.is_set():
-        # Get frame with timeout to avoid blocking during post-match
+        # Initialize flags for this frame
+        health_restoration_detected = False
+        
+        # Get frame with timeout to avoid blocking during post-match and fallback
         frame = None
         ts = None
         try:
             frame, ts = frame_q.get(timeout=0.1)
         except:
-            # No frame available - handle post_match actions
-            if state == "post_match_waiting":
-                time_rounded = round(time.time(), 2)
-                time_int = int(time_rounded * 100)
-                if time_int % 2 == 0:
-                    write_action("start\n")
+            # No frame available - handle post_match and fallback actions
+            if state == "post_match_waiting" or state == "health_detection_lost":
+                if  action_to_send == "start\n":
+                     action_to_send = "kick\n"
                 else:
-                    write_action("kick\n")
+                    action_to_send = "kick\n"
+                write_action(action_to_send)
             continue
         
         # If we got here, we have a frame - process it normally
+        global_step += 1
         
         # 1) Compute health % once
         strip = frame[Y_HEALTH:Y_HEALTH+1]
@@ -611,8 +788,149 @@ def consumer():
         pct1  = cv2.countNonZero(m1) / LEN_P1 * 100.0
         pct2  = cv2.countNonZero(m2) / LEN_P2 * 100.0
 
+        # Log health every second
+        current_time = time.time()
+        if current_time - last_health_log_time >= 1.0:
+            log_state(f"Health: P1={pct1:.1f}%, P2={pct2:.1f}%")
+            last_health_log_time = current_time
+
+        # HEALTH-BASED ROUND DETECTION
+        # Check if both players are at 0% health
+        if pct1 <= DEATH_THRESHOLD and pct2 <= DEATH_THRESHOLD:
+            if both_at_zero_since is None:
+                both_at_zero_since = time.time()
+                log_state(f"⚠️ Both players at 0% health - tracking... (P1:{pct1:.1f}%, P2:{pct2:.1f}%)")
+        else:
+            # Check if we're coming back from a confirmed death period
+            if both_at_zero_since is not None:
+                time_at_zero = time.time() - both_at_zero_since
+                
+                # Log current health values when they're no longer both at zero
+                if time_at_zero < ZERO_HEALTH_DURATION:
+                    log_debug(f"Health recovery too quick: P1:{pct1:.1f}%, P2:{pct2:.1f}% after {time_at_zero:.2f}s")
+                
+                # If both are now alive AND were dead for required duration
+                if (pct1 >= ALIVE_THRESHOLD and pct2 >= ALIVE_THRESHOLD and 
+                    time_at_zero >= ZERO_HEALTH_DURATION):
+                    
+                    log_round(f"🎯 ROUND START DETECTED via health restoration! "
+                             f"(were at 0% for {time_at_zero:.1f}s, now P1:{pct1:.1f}% P2:{pct2:.1f}%)")
+                    
+                    # We need to get the indicator states first - will be handled later in frame processing
+                    health_restoration_detected = True
+                    
+                both_at_zero_since = None
+                
+        # Debug log health values periodically
+        if global_step % 60 == 0:
+            log_debug(f"Health check: P1={pct1:.1f}%, P2={pct2:.1f}%, State={state}, "
+                     f"Zero tracking={'Yes' if both_at_zero_since else 'No'}")
+
+        # HEALTH DETECTION FALLBACK LOGIC
+        # Check if both health bars are undetectable (0%)
+        if pct1 == 0.0 and pct2 == 0.0:
+            if health_lost_since is None:
+                health_lost_since = time.time()
+                log_state("⚠️ Health bars lost - starting timer...")
+            else:
+                time_lost = time.time() - health_lost_since
+                if time_lost >= HEALTH_LOST_TIMEOUT and state != "health_detection_lost":
+                    # SAVE THE CURRENT STATE BEFORE ENTERING FALLBACK
+                    state_before_fallback = state
+                    log_state(f"🚨 HEALTH DETECTION LOST for {time_lost:.1f}s - Entering fallback mode! (was in state: {state})")
+                    state = "health_detection_lost"
+                    fallback_action_count = 0
+                    # Clear any active round state
+                    alive_since = None
+                    death_since = None
+                    current_action = None
+                    hold_counter = 0
+        else:
+            # Health bars detected - check if we need to exit fallback mode
+            if state == "health_detection_lost":
+                if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
+                    log_state(f"✅ Health bars restored! P1={pct1:.1f}% P2={pct2:.1f}% - Exiting fallback mode")
+
+                    # Clear any in-flight round candidates
+                    round_state.clear_all_candidates()
+
+                    # Re-compute indicators
+                    round_indicators, indicator_states = detect_round_indicators(frame)
+                    detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
+                    detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
+
+                    # Special handling if we were in post_match_waiting before fallback
+                    if state_before_fallback == "post_match_waiting":
+                        # We were navigating post-match menus, so check if we're at a new match
+                        if detected_p1_rounds == 0 and detected_p2_rounds == 0:
+                            log_state("   → Post-match navigation complete, new match detected")
+                            round_state.reset()  # CRITICAL: Reset for new match!
+                            state = "waiting_for_match"
+                        else:
+                            # Still in post-match state
+                            log_state("   → Returning to post_match_waiting")
+                            state = "post_match_waiting"
+                    else:
+                        # Normal fallback exit logic for other states
+                        confirmed_p1, confirmed_p2 = round_state.get_current_state()
+                        
+                        if detected_p1_rounds == 0 and detected_p2_rounds == 0:
+                            # Check if round state needs reset (shouldn't happen in normal flow)
+                            if confirmed_p1 > 0 or confirmed_p2 > 0:
+                                log_state("   → WARNING: Clearing round indicators with non-zero confirmed state")
+                            state = "waiting_for_match"
+                            log_state("   → Returning to waiting_for_match (no round indicators)")
+                        elif (detected_p1_rounds > confirmed_p1 or
+                            detected_p2_rounds > confirmed_p2):
+                            state = "active"
+                            log_state("   → Returning to active (round in progress)")
+                        else:
+                            # Detected rounds match confirmed - we're between rounds
+                            state = "waiting_for_round"
+                            log_state(f"   → Returning to waiting_for_round (P1:{detected_p1_rounds} P2:{detected_p2_rounds})")
+
+                    health_lost_since = None
+                    fallback_action_count = 0
+                    state_before_fallback = None
+                else:
+                    # still partial health—stay in fallback
+                    if fallback_action_count % 50 == 0:
+                        log_debug(
+                        f"Health partially restored (P1={pct1:.1f}% P2={pct2:.1f}%) but not at limit"
+                        )
+                        
+            elif health_lost_since is not None:
+                # Health bars are back but not in fallback mode yet
+                log_debug(f"Health bars restored before timeout (was lost for {time.time() - health_lost_since:.1f}s)")
+                health_lost_since = None
+
+        # Handle fallback state actions
+        if state == "health_detection_lost":
+            # Alternate between kick and start
+            time_rounded = round(time.time(), 2)
+            time_int = int(time_rounded * 100)
+            
+            if time_int % 2 == 0:
+                action_to_write = "kick\n"
+            else:
+                action_to_write = "start\n"
+            
+            # Debug: Log every 50th action
+            fallback_action_count += 1
+            if fallback_action_count % 50 == 0:
+                log_debug(f"Fallback action #{fallback_action_count}: {action_to_write.strip()} (P1={pct1:.1f}% P2={pct2:.1f}%)")
+            
+            write_action(action_to_write)
+            
+            # Skip the rest of the processing while in fallback mode
+            try:
+                frame_q.task_done()
+            except:
+                pass
+            continue
+
         # 2) ALWAYS detect rounds - STATE INDEPENDENT!
-        round_indicators = detect_round_indicators(frame)
+        round_indicators, indicator_states = detect_round_indicators(frame)
         detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
         detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
         
@@ -620,11 +938,41 @@ def consumer():
         if global_step % 30 == 0:
             log_debug(f"Frame health: P1={pct1:.2f}%, P2={pct2:.2f}%")
             log_debug(f"Round indicators: {round_indicators}")
+            log_debug(f"Indicator states: {indicator_states}")
             log_debug(f"Detected rounds: P1={detected_p1_rounds}, P2={detected_p2_rounds}")
             log_debug(f"Current state: {state}")
+            log_debug(f"Baseline system - Confirmed: P1={round_state.confirmed['p1']} P2={round_state.confirmed['p2']}, "
+                     f"Pending: P1={round_state.pending_round_changes['p1']} P2={round_state.pending_round_changes['p2']}, "
+                     f"Death period: {round_state.in_death_period}")
 
-        # 3) Update round state - ALWAYS, regardless of game state
-        round_result = round_state.update(detected_p1_rounds, detected_p2_rounds)
+        # 3) Update round state using NEW baseline system
+        both_at_zero = (pct1 <= DEATH_THRESHOLD and pct2 <= DEATH_THRESHOLD)
+        
+        # Handle health restoration detected earlier
+        round_result = None
+        if health_restoration_detected:
+            # ROUND START: Confirm pending changes and capture new baseline
+            round_result = round_state.on_round_start(indicator_states)
+            
+            # Handle state transitions that were removed earlier
+            if state in ["waiting_for_match", "waiting_for_round"]:
+                log_state("Health restoration confirms round start - transitioning to active")
+                state = "active"
+                frame_stack.clear()
+                # Reset tracking variables
+                prev_state = None
+                prev_action = None
+                prev_pct1 = pct1
+                prev_pct2 = pct2
+                round_start_time = time.time()
+                round_steps = 0
+                round_reward = 0.0
+                action_counts.fill(0)
+                alive_since = None
+                write_action("start\n")
+        else:
+            # DURING ROUND: Check for indicator changes during death period
+            round_state.update_with_baseline(indicator_states, both_at_zero)
 
         # 4) Handle round completion if detected
         if round_result and round_result[0] == "round_won":
@@ -694,6 +1042,7 @@ def consumer():
                 on_match_end()
                 log_state(f"🎯 Match over! Entering post-match navigation mode...")
                 state = "post_match_waiting"
+                round_state.clear_all_candidates()
                 alive_since = None
                 death_since = None
             else:
@@ -705,9 +1054,16 @@ def consumer():
                 # Reset post-match tracking in case we were in that state
                 post_match_entry_logged = False
                 post_match_action_count = 0
+                # DON'T RESET round_state here! Keep the confirmed counts for high watermark
 
         # 5) State-specific logic
         if state == "waiting_for_match":
+            # Debug log every 30 frames
+            if global_step % 30 == 0:
+                log_debug(f"waiting_for_match: P1={pct1:.1f}% P2={pct2:.1f}% "
+                         f"alive_since={alive_since is not None} "
+                         f"recent_round_end={round_state.has_round_recently_ended(timeout=1.0)}")
+            
             # Waiting for first round of a new match
             if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
                 # Don't start if we just confirmed a round end
@@ -769,11 +1125,21 @@ def consumer():
             # Check for match reset (indicators clear + full health)
             indicators_clear = (detected_p1_rounds == 0 and detected_p2_rounds == 0)
             
-            if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT and indicators_clear:
+            # Check if all indicators are blue (new match ready)
+            all_blue = all(state == 'blue' for state in indicator_states.values())
+            
+            # Debug log the current state
+            if post_match_action_count % 100 == 0:
+                log_debug(f"Post-match check: indicators_clear={indicators_clear}, all_blue={all_blue}, "
+                         f"P1:{detected_p1_rounds} P2:{detected_p2_rounds}, "
+                         f"health P1:{pct1:.1f}% P2:{pct2:.1f}%")
+            
+            if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT and (indicators_clear or all_blue):
                 alive_since = alive_since or time.time()
                 if time.time() - alive_since >= 0.5:
-                    log_state(f"🆕 NEW MATCH DETECTED! Starting Match #{match_tracker.match_number}")
-                    round_state.reset()
+                    log_state(f"🆕 NEW MATCH DETECTED! Starting Match #{match_tracker.match_number} "
+                             f"(indicators: {'all blue' if all_blue else 'cleared'})")
+                    round_state.reset()  # NOW we reset for the new match
                     
                     # Reset the debug flags
                     post_match_entry_logged = False
@@ -803,7 +1169,6 @@ def consumer():
         elif state == "active":
             # ACTIVE → DQN actions
             round_steps += 1
-            global_step += 1
             
             # 1) Always append the new pre-processed frame
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -923,7 +1288,6 @@ def consumer():
             frame_q.task_done()
         except:
             pass
-
 # ─── ENHANCED LEARNER WITH CONTINUOUS TRAINING ─────────────────────────────
 def learner():
     global match_number
