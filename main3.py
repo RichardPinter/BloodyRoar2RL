@@ -21,6 +21,8 @@ from PIL import Image
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
+import tkinter as tk
+from tkinter import ttk
 action_to_send = "start\n"
 # ─── LOGGING SETUP ─────────────────────────────────────────────────────────
 # EASY TOGGLE: Set to False to disable file logging
@@ -205,6 +207,191 @@ def compute_black_stats(frame):
         }
     return pct_out, range_out
 
+# ─── ROUND VALIDATION GUI ─────────────────────────────────────────────────
+class RoundValidationGUI:
+    def __init__(self):
+        self.validation_queue = Queue()
+        self.result_queue = Queue()
+        self.validation_log = "round_validation.csv"
+        
+        # Initialize CSV file
+        if not os.path.exists(self.validation_log):
+            with open(self.validation_log, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    'timestamp', 'system_prediction', 'human_confirmation', 
+                    'p1_health', 'p2_health', 'first_to_zero_flag', 
+                    'both_at_zero', 'system_correct'
+                ])
+        
+        log_state("🎯 Round validation GUI initialized")
+    
+    def request_validation(self, system_prediction, p1_health, p2_health, 
+                          first_to_zero_flag, both_at_zero):
+        """Queue a validation request (called from main thread)"""
+        validation_data = {
+            'timestamp': datetime.now().isoformat(),
+            'system_prediction': system_prediction,
+            'p1_health': p1_health,
+            'p2_health': p2_health,
+            'first_to_zero_flag': first_to_zero_flag,
+            'both_at_zero': both_at_zero
+        }
+        self.validation_queue.put(validation_data)
+        log_round(f"🤔 Manual validation requested: System says {system_prediction} wins")
+    
+    def show_validation_dialog(self, validation_data):
+        """Show the validation dialog (runs in GUI thread)"""
+        root = tk.Tk()
+        root.title("Round Validation")
+        root.geometry("400x300")
+        root.attributes('-topmost', True)  # Always on top
+        root.focus_force()
+        
+        # Center the window
+        root.eval('tk::PlaceWindow . center')
+        
+        selected_winner = tk.StringVar(value="")
+        result = {'confirmed': False, 'winner': None}
+        
+        # Title
+        title_label = tk.Label(root, text="🎯 ROUND ENDED - WHO WON?", 
+                              font=('Arial', 14, 'bold'))
+        title_label.pack(pady=10)
+        
+        # System prediction
+        sys_pred = validation_data['system_prediction']
+        pred_label = tk.Label(root, text=f"System detected: {sys_pred} WINS", 
+                             font=('Arial', 12), 
+                             fg='blue' if sys_pred == 'P1' else 'red')
+        pred_label.pack(pady=5)
+        
+        # Health info
+        health_frame = tk.Frame(root)
+        health_frame.pack(pady=5)
+        
+        tk.Label(health_frame, text=f"Health: P1={validation_data['p1_health']:.1f}% "
+                                   f"P2={validation_data['p2_health']:.1f}%").pack()
+        tk.Label(health_frame, text=f"First to zero: {validation_data['first_to_zero_flag']} "
+                                   f"Both at zero: {validation_data['both_at_zero']}").pack()
+        
+        # Separator
+        tk.Label(root, text="─" * 40).pack(pady=10)
+        
+        # Selection frame
+        selection_frame = tk.Frame(root)
+        selection_frame.pack(pady=10)
+        
+        tk.Label(selection_frame, text="Who ACTUALLY won?", 
+                font=('Arial', 12, 'bold')).pack()
+        
+        # Radio buttons
+        radio_frame = tk.Frame(selection_frame)
+        radio_frame.pack(pady=10)
+        
+        tk.Radiobutton(radio_frame, text="P1 WINS", variable=selected_winner, 
+                      value="P1", font=('Arial', 11)).pack(anchor='w')
+        tk.Radiobutton(radio_frame, text="P2 WINS", variable=selected_winner, 
+                      value="P2", font=('Arial', 11)).pack(anchor='w')
+        tk.Radiobutton(radio_frame, text="INVALID/NO WINNER", variable=selected_winner, 
+                      value="INVALID", font=('Arial', 11)).pack(anchor='w')
+        
+        # Buttons
+        button_frame = tk.Frame(root)
+        button_frame.pack(pady=15)
+        
+        def confirm():
+            if selected_winner.get():
+                result['confirmed'] = True
+                result['winner'] = selected_winner.get()
+                root.quit()
+                root.destroy()
+        
+        def dismiss():
+            result['confirmed'] = False
+            root.quit()
+            root.destroy()
+        
+        tk.Button(button_frame, text="✓ CONFIRM", command=confirm,
+                 bg='green', fg='white', font=('Arial', 10, 'bold')).pack(side='left', padx=5)
+        tk.Button(button_frame, text="✗ DISMISS", command=dismiss,
+                 bg='gray', fg='white', font=('Arial', 10)).pack(side='left', padx=5)
+        
+        # Keyboard shortcuts
+        def on_key(event):
+            if event.char == '1':
+                selected_winner.set("P1")
+                confirm()
+            elif event.char == '2':
+                selected_winner.set("P2")
+                confirm()
+            elif event.char.lower() == 'x':
+                selected_winner.set("INVALID")
+                confirm()
+            elif event.keysym == 'Escape':
+                dismiss()
+        
+        root.bind('<Key>', on_key)
+        root.focus_set()
+        
+        # Instructions
+        tk.Label(root, text="Shortcuts: 1=P1, 2=P2, X=Invalid, ESC=Dismiss", 
+                font=('Arial', 9), fg='gray').pack(pady=5)
+        
+        root.mainloop()
+        return result
+    
+    def log_validation(self, validation_data, human_result):
+        """Log the validation result to CSV"""
+        system_correct = (validation_data['system_prediction'] == human_result.get('winner', ''))
+        
+        with open(self.validation_log, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                validation_data['timestamp'],
+                validation_data['system_prediction'],
+                human_result.get('winner', 'DISMISSED'),
+                validation_data['p1_health'],
+                validation_data['p2_health'],
+                validation_data['first_to_zero_flag'],
+                validation_data['both_at_zero'],
+                system_correct
+            ])
+        
+        if human_result.get('confirmed', False):
+            winner = human_result['winner']
+            if system_correct and winner != 'INVALID':
+                log_round(f"✅ VALIDATION: Confirmed {winner} wins - System was CORRECT!")
+            elif winner != 'INVALID':
+                log_round(f"❌ VALIDATION: Human says {winner} wins - System was WRONG!")
+            else:
+                log_round(f"⚠️ VALIDATION: Human marked as INVALID round")
+        else:
+            log_round(f"⏭️ VALIDATION: Dismissed without confirmation")
+    
+    def run_gui_thread(self):
+        """Run the GUI thread that processes validation requests"""
+        while True:
+            try:
+                # Wait for validation request
+                validation_data = self.validation_queue.get(timeout=1.0)
+                
+                # Show dialog and get result
+                human_result = self.show_validation_dialog(validation_data)
+                
+                # Log the result
+                self.log_validation(validation_data, human_result)
+                
+                # Put result in queue for main thread if needed
+                self.result_queue.put({
+                    'validation_data': validation_data,
+                    'human_result': human_result
+                })
+                
+            except:
+                # Timeout - continue waiting
+                continue
+
 # ─── DQN NET & BUFFER ─────────────────────────────────────────────────────
 class DQNNet(nn.Module):
     def __init__(self, in_ch, n_actions, extra_dim):
@@ -273,10 +460,14 @@ class RoundState:
         # confirmed round counts
         self.confirmed = {'p1': 0, 'p2': 0}
         
-        # NEW: Baseline-based round detection
-        self.baseline_indicators = None  # Captured at round start
-        self.pending_round_changes = {'p1': 0, 'p2': 0}  # Changes detected during death period
-        self.in_death_period = False  # Are both players currently at 0% health?
+        # NEW: "First to zero" detection system (from game_monitor.py)
+        self.first_to_zero_flag = None     # 'p1' or 'p2' - who went to zero first
+        self.both_at_zero = False          # Are both players currently at zero?
+        self.round_winner_decided = False  # Has this round been decided?
+        
+        # Track previous health values for simultaneous zero handling
+        self.prev_pct1 = 100.0
+        self.prev_pct2 = 100.0
         
         # OLD: Timer-based system (keeping for compatibility/fallback)
         self.cand = {
@@ -288,7 +479,7 @@ class RoundState:
         # track when we last confirmed a round
         self.last_round_end_time = None
 
-        log_state(f"🔄 RoundState initialized: P1:0 P2:0 (baseline system)")
+        log_state(f"🔄 RoundState initialized: P1:0 P2:0 (first-to-zero system)")
 
     def clear_candidate(self, player):
         self.cand[player] = {'count': None, 'start': None}
@@ -309,122 +500,114 @@ class RoundState:
     def reset(self):
         """Reset round state for a new match."""
         self.confirmed = {'p1': 0, 'p2': 0}
-        self.baseline_indicators = None
-        self.pending_round_changes = {'p1': 0, 'p2': 0}
-        self.in_death_period = False
+        self.first_to_zero_flag = None
+        self.both_at_zero = False
+        self.round_winner_decided = False
+        self.prev_pct1 = 100.0
+        self.prev_pct2 = 100.0
         self.clear_all_candidates()
         self.last_round_end_time = None
-        log_state(f"🔄 RoundState reset for new match: P1:0 P2:0 (baseline cleared)")
+        log_state(f"🔄 RoundState reset for new match: P1:0 P2:0 (first-to-zero flags cleared)")
         
-    def capture_baseline(self, indicator_states):
-        """Capture current indicator states as baseline for this round"""
-        self.baseline_indicators = indicator_states.copy()
-        log_state(f"📸 Baseline captured: {indicator_states}")
-        
-    def check_for_changes(self, current_indicators, both_at_zero):
-        """Compare current indicators to baseline and update pending changes"""
-        if self.baseline_indicators is None:
-            log_debug("No baseline set - capturing current as baseline")
-            self.capture_baseline(current_indicators)
-            return
-            
-        # Update death period status
-        self.in_death_period = both_at_zero
-        
-        # Only process changes during death period
-        if not self.in_death_period:
-            return
-            
-        # Check for changes from baseline
-        p1_baseline_rounds = sum(1 for k, v in self.baseline_indicators.items() 
-                                if k.startswith('p1_') and v == 'red')
-        p2_baseline_rounds = sum(1 for k, v in self.baseline_indicators.items() 
-                                if k.startswith('p2_') and v == 'red')
-        
-        p1_current_rounds = sum(1 for k, v in current_indicators.items() 
-                               if k.startswith('p1_') and v == 'red')
-        p2_current_rounds = sum(1 for k, v in current_indicators.items() 
-                               if k.startswith('p2_') and v == 'red')
-        
-        # Detect changes
-        p1_change = p1_current_rounds - p1_baseline_rounds
-        p2_change = p2_current_rounds - p2_baseline_rounds
-        
-        # Update pending changes if we detect increments
-        if p1_change > 0 and p1_change != self.pending_round_changes['p1']:
-            log_debug(f"🔍 P1 indicator change detected: +{p1_change} from baseline (during death)")
-            self.pending_round_changes['p1'] = p1_change
-            
-        if p2_change > 0 and p2_change != self.pending_round_changes['p2']:
-            log_debug(f"🔍 P2 indicator change detected: +{p2_change} from baseline (during death)")
-            self.pending_round_changes['p2'] = p2_change
-            
-    def confirm_pending_changes(self):
-        """Apply any pending changes and return winner info"""
-        if self.pending_round_changes['p1'] == 0 and self.pending_round_changes['p2'] == 0:
-            return None
-            
-        # Validate that only one player can win a round
-        if self.pending_round_changes['p1'] > 0 and self.pending_round_changes['p2'] > 0:
-            log_debug("⚠️ INVALID: Both players have pending changes - ignoring all")
-            self.pending_round_changes = {'p1': 0, 'p2': 0}
-            return None
-            
-        # Apply the change
-        winner = None
-        if self.pending_round_changes['p1'] > 0:
-            # Validate increment is exactly 1
-            if self.pending_round_changes['p1'] == 1:
-                self.confirmed['p1'] += 1
-                winner = 'p1'
-                log_round(f"🎯 ROUND CONFIRMED: P1 won! (P1:{self.confirmed['p1']} P2:{self.confirmed['p2']})")
-            else:
-                log_debug(f"⚠️ INVALID: P1 pending change is {self.pending_round_changes['p1']}, not 1")
-                
-        if self.pending_round_changes['p2'] > 0:
-            # Validate increment is exactly 1
-            if self.pending_round_changes['p2'] == 1:
-                self.confirmed['p2'] += 1
-                winner = 'p2'
-                log_round(f"🎯 ROUND CONFIRMED: P2 won! (P1:{self.confirmed['p1']} P2:{self.confirmed['p2']})")
-            else:
-                log_debug(f"⚠️ INVALID: P2 pending change is {self.pending_round_changes['p2']}, not 1")
-        
-        # Clear pending changes
-        self.pending_round_changes = {'p1': 0, 'p2': 0}
-        
-        # Update timing
-        if winner:
-            self.last_round_end_time = time.time()
-            return ("round_won", winner, self.confirmed['p1'], self.confirmed['p2'])
-        
-        return None
-    
-    def update_with_baseline(self, indicator_states, both_at_zero):
-        """NEW: Baseline-based update method"""
-        # Apply 5-second cooldown
+    def update_first_to_zero(self, pct1, pct2):
+        """NEW: First-to-zero detection system (from game_monitor.py)"""
+        # Apply cooldown
         if self.has_round_recently_ended(timeout=5.0):
             return None
             
-        # Check for changes against baseline
-        self.check_for_changes(indicator_states, both_at_zero)
+        if not self.round_winner_decided:
+            # Check who goes to zero first (and flag them) - MORE PERMISSIVE (2% threshold)
+            if pct1 <= 2.0 and pct2 > 2.0 and self.first_to_zero_flag is None:
+                self.first_to_zero_flag = 'p1'  # P1 went to zero first
+                log_round(f"🚩 FLAG SET: P1 went to zero first! (P1={pct1:.1f}% P2={pct2:.1f}%)")
+            elif pct2 <= 2.0 and pct1 > 2.0 and self.first_to_zero_flag is None:
+                self.first_to_zero_flag = 'p2'  # P2 went to zero first  
+                log_round(f"🚩 FLAG SET: P2 went to zero first! (P1={pct1:.1f}% P2={pct2:.1f}%)")
+            elif pct1 <= 2.0 and pct2 <= 2.0 and self.first_to_zero_flag is None:
+                # Both go to zero simultaneously - use previous health to determine who was closer to death
+                log_round(f"⚠️ SIMULTANEOUS ZERO: Both P1={pct1:.1f}% P2={pct2:.1f}%")
+                log_round(f"   Previous health: P1={self.prev_pct1:.1f}% P2={self.prev_pct2:.1f}%")
+                
+                # Flag whoever had lower health in the previous frame
+                if self.prev_pct1 < self.prev_pct2:
+                    self.first_to_zero_flag = 'p1'
+                    log_round(f"🚩 FLAG SET: P1 was closer to zero (P1={self.prev_pct1:.1f}% < P2={self.prev_pct2:.1f}%)")
+                elif self.prev_pct2 < self.prev_pct1:
+                    self.first_to_zero_flag = 'p2'
+                    log_round(f"🚩 FLAG SET: P2 was closer to zero (P2={self.prev_pct2:.1f}% < P1={self.prev_pct1:.1f}%)")
+                else:
+                    # Exactly tied - use a fallback (prefer P1 for consistency)
+                    self.first_to_zero_flag = 'p1'
+                    log_round(f"🚩 FLAG SET: Exactly tied, defaulting to P1 (P1={self.prev_pct1:.1f}% = P2={self.prev_pct2:.1f}%)")
+            
+            # Reset flag only if flagged player recovers while OTHER player is still high
+            # (not when both go to full health which means round ended)
+            if self.first_to_zero_flag == 'p1' and pct1 > 50.0 and pct2 > 50.0 and not self.both_at_zero:
+                log_debug(f"FLAG RESET: P1 recovered before both went to zero! (P1={pct1:.1f}% P2={pct2:.1f}%)")
+                self.first_to_zero_flag = None  # P1 recovered, reset flag
+            elif self.first_to_zero_flag == 'p2' and pct2 > 50.0 and pct1 > 50.0 and not self.both_at_zero:
+                log_debug(f"FLAG RESET: P2 recovered before both went to zero! (P1={pct1:.1f}% P2={pct2:.1f}%)")
+                self.first_to_zero_flag = None  # P2 recovered, reset flag
+            
+            # Track when both players are at zero - MORE PERMISSIVE (2% threshold)
+            if pct1 <= 2.0 and pct2 <= 2.0:
+                if not self.both_at_zero:
+                    self.both_at_zero = True
+                    log_round(f"💀 BOTH AT ZERO: P1={pct1:.1f}% P2={pct2:.1f}% | Flag={self.first_to_zero_flag}")
+            
+            # Round end: Both restore to high health after being at zero - MORE PERMISSIVE (95% threshold)
+            if self.both_at_zero and pct1 >= 95.0 and pct2 >= 95.0:
+                log_round(f"💚 HEALTH RESTORED: P1={pct1:.1f}% P2={pct2:.1f}% | Flag={self.first_to_zero_flag}")
+                
+                if self.first_to_zero_flag is not None:
+                    # Winner = whoever was NOT flagged as first to zero
+                    winner = 'p2' if self.first_to_zero_flag == 'p1' else 'p1'
+                    
+                    # Update totals
+                    self.confirmed[winner] += 1
+                    
+                    log_round(f"🎯 ROUND END: {winner.upper()} WINS! ({self.first_to_zero_flag.upper()} went to zero first)")
+                    log_round(f"📊 Score: P1={self.confirmed['p1']} P2={self.confirmed['p2']}")
+                    
+                    # Request manual validation via GUI
+                    validation_gui.request_validation(
+                        system_prediction=winner.upper(),
+                        p1_health=pct1,
+                        p2_health=pct2,
+                        first_to_zero_flag=self.first_to_zero_flag,
+                        both_at_zero=self.both_at_zero
+                    )
+                    
+                    # Reset for next round
+                    self.first_to_zero_flag = None
+                    self.both_at_zero = False
+                    self.round_winner_decided = True
+                    self.last_round_end_time = time.time()
+                    
+                    return ("round_won", winner, self.confirmed['p1'], self.confirmed['p2'])
+                else:
+                    # FALLBACK: Health restoration but no flag set - use indicator-based detection
+                    log_round(f"⚠️ FALLBACK: Health restored but no first_to_zero_flag set! Using indicator fallback...")
+                    log_round(f"   This means both players went to zero simultaneously or flag detection failed.")
+                    # Reset the both_at_zero flag but return None to let old system handle it
+                    self.both_at_zero = False
+                    return ("fallback_needed", None, self.confirmed['p1'], self.confirmed['p2'])
         
-        # Don't return anything here - confirmation happens at round start
+        # Reset round decision when new round starts - MORE PERMISSIVE (95% threshold)
+        if self.round_winner_decided and pct1 >= 95.0 and pct2 >= 95.0:
+            log_debug(f"ROUND RESET: Ready for next round (P1={pct1:.1f}% P2={pct2:.1f}%)")
+            self.round_winner_decided = False
+        
+        # Update previous health values for next frame
+        self.prev_pct1 = pct1
+        self.prev_pct2 = pct2
+        
         return None
-    
-    def on_round_start(self, indicator_states):
-        """Called when health restoration detected - confirms pending and captures new baseline"""
-        # First, confirm any pending changes from previous round
-        result = self.confirm_pending_changes()
-        
-        # Then capture new baseline for starting round
-        self.capture_baseline(indicator_states)
-        
-        return result
 
     def update(self, detected_p1, detected_p2):
         """
-        Update round state with new detection.
+        LEGACY: Old timer-based round detection system (kept as fallback)
+        NOTE: This method is no longer used - use update_first_to_zero() instead
         Returns: None or ("round_won", winner, p1_rounds, p2_rounds)
         """
         now = time.time()
@@ -653,6 +836,9 @@ match_number = start_match_number
 global_step = 0
 episode_number = 0
 
+# Initialize validation GUI
+validation_gui = RoundValidationGUI()
+
 # ─── PRODUCER ────────────────────────────────────────────────────────────────
 def producer():
     start = time.perf_counter()
@@ -701,9 +887,9 @@ def consumer():
     
     # Health-based round detection
     both_at_zero_since = None
-    DEATH_THRESHOLD = 0.0      # Both must be exactly 0%
-    ALIVE_THRESHOLD = 98.0     # Both must be >99% to confirm round start
-    ZERO_HEALTH_DURATION = 1.0 # Must be at 0% for 1 second
+    DEATH_THRESHOLD = 2.0      # Both must be <= 2% (more permissive)
+    ALIVE_THRESHOLD = 95.0     # Both must be >= 95% to confirm round start (more permissive)
+    ZERO_HEALTH_DURATION = 1.0 # Must be at low health for 1 second
 
     # Initialize robust round and match tracking
     round_state = RoundState()
@@ -728,6 +914,30 @@ def consumer():
                 f.write(text)
         except Exception as e:
             log_debug(f"ERROR writing action: {e}")
+
+    def handle_menu_navigation(state_name="menu", action_count=0):
+        """
+        Unified function to handle menu navigation by alternating kick/start
+        Returns: (action_string, updated_count)
+        """
+        # Alternate every 0.5 seconds instead of every frame
+        current_time = time.time()
+        time_slot = int(current_time * 2)  # Changes every 0.5 seconds
+        
+        if time_slot % 2 == 0:
+            action_to_write = "kick\n"
+        else:
+            action_to_write = "start\n"
+        
+        action_count += 1
+        
+        # Debug: Log every 50th action to avoid spam
+        if action_count % 50 == 0:
+            log_debug(f"{state_name} navigation #{action_count}: {action_to_write.strip()} "
+                     f"(interval: 0.5s)")
+        
+        write_action(action_to_write)
+        return action_to_write, action_count
 
     # ── TRAINING HOOKS ────
     def on_round_end():
@@ -769,13 +979,11 @@ def consumer():
         try:
             frame, ts = frame_q.get(timeout=0.1)
         except:
-            # No frame available - handle post_match and fallback actions
-            if state == "post_match_waiting" or state == "health_detection_lost":
-                if  action_to_send == "start\n":
-                     action_to_send = "kick\n"
-                else:
-                    action_to_send = "kick\n"
-                write_action(action_to_send)
+            # No frame available - handle post_match and fallback actions using unified function
+            if state == "post_match_waiting":
+                _, post_match_action_count = handle_menu_navigation("post_match_no_frame", post_match_action_count)
+            elif state == "health_detection_lost":
+                _, fallback_action_count = handle_menu_navigation("fallback_no_frame", fallback_action_count)
             continue
         
         # If we got here, we have a frame - process it normally
@@ -906,21 +1114,8 @@ def consumer():
 
         # Handle fallback state actions
         if state == "health_detection_lost":
-            # Alternate between kick and start
-            time_rounded = round(time.time(), 2)
-            time_int = int(time_rounded * 100)
-            
-            if time_int % 2 == 0:
-                action_to_write = "kick\n"
-            else:
-                action_to_write = "start\n"
-            
-            # Debug: Log every 50th action
-            fallback_action_count += 1
-            if fallback_action_count % 50 == 0:
-                log_debug(f"Fallback action #{fallback_action_count}: {action_to_write.strip()} (P1={pct1:.1f}% P2={pct2:.1f}%)")
-            
-            write_action(action_to_write)
+            # Use unified menu navigation
+            _, fallback_action_count = handle_menu_navigation("health_fallback", fallback_action_count)
             
             # Skip the rest of the processing while in fallback mode
             try:
@@ -941,20 +1136,17 @@ def consumer():
             log_debug(f"Indicator states: {indicator_states}")
             log_debug(f"Detected rounds: P1={detected_p1_rounds}, P2={detected_p2_rounds}")
             log_debug(f"Current state: {state}")
-            log_debug(f"Baseline system - Confirmed: P1={round_state.confirmed['p1']} P2={round_state.confirmed['p2']}, "
-                     f"Pending: P1={round_state.pending_round_changes['p1']} P2={round_state.pending_round_changes['p2']}, "
-                     f"Death period: {round_state.in_death_period}")
+            log_debug(f"First-to-zero system - Confirmed: P1={round_state.confirmed['p1']} P2={round_state.confirmed['p2']}, "
+                     f"First to zero: {round_state.first_to_zero_flag}, Both at zero: {round_state.both_at_zero}, "
+                     f"Round decided: {round_state.round_winner_decided}")
 
-        # 3) Update round state using NEW baseline system
-        both_at_zero = (pct1 <= DEATH_THRESHOLD and pct2 <= DEATH_THRESHOLD)
+        # 3) Update round state using NEW first-to-zero system
+        # NEW: Use first-to-zero detection system instead of baseline
+        round_result = round_state.update_first_to_zero(pct1, pct2)
         
         # Handle health restoration detected earlier
-        round_result = None
         if health_restoration_detected:
-            # ROUND START: Confirm pending changes and capture new baseline
-            round_result = round_state.on_round_start(indicator_states)
-            
-            # Handle state transitions that were removed earlier
+            # Handle state transitions for round start
             if state in ["waiting_for_match", "waiting_for_round"]:
                 log_state("Health restoration confirms round start - transitioning to active")
                 state = "active"
@@ -970,13 +1162,37 @@ def consumer():
                 action_counts.fill(0)
                 alive_since = None
                 write_action("start\n")
-        else:
-            # DURING ROUND: Check for indicator changes during death period
-            round_state.update_with_baseline(indicator_states, both_at_zero)
 
         # 4) Handle round completion if detected
         if round_result and round_result[0] == "round_won":
             _, winner, p1_rounds, p2_rounds = round_result
+        elif round_result and round_result[0] == "fallback_needed":
+            # FALLBACK: Use the old indicator-based system
+            log_round("🔄 Using fallback indicator-based detection...")
+            detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
+            detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
+            
+            # Check if indicators show a round increment
+            old_result = round_state.update(detected_p1_rounds, detected_p2_rounds)
+            if old_result and old_result[0] == "round_won":
+                _, winner, p1_rounds, p2_rounds = old_result
+                log_round(f"✅ Fallback successful: {winner.upper()} wins via indicators!")
+                
+                # Request validation for fallback detection too
+                validation_gui.request_validation(
+                    system_prediction=f"{winner.upper()}_FALLBACK",
+                    p1_health=pct1,
+                    p2_health=pct2,
+                    first_to_zero_flag="FALLBACK",
+                    both_at_zero=True
+                )
+                
+                round_result = old_result
+            else:
+                log_round("❌ Fallback failed - no clear winner from indicators either")
+                round_result = None
+        
+        if round_result and round_result[0] == "round_won":
             
             log_round(f"[Episode] Round #{episode_count} total_reward={round_reward:.2f}")
             episode_count += 1
@@ -1150,21 +1366,8 @@ def consumer():
             else:
                 alive_since = None
                 
-            # Continue alternating actions
-            time_rounded = round(time.time(), 2)
-            time_int = int(time_rounded * 100)
-            
-            if time_int % 2 == 0:
-                action_to_write = "start\n"
-            else:
-                action_to_write = "kick\n"
-            
-            # Debug: Log every 50th action
-            post_match_action_count += 1
-            if post_match_action_count % 50 == 0:
-                log_debug(f"Post-match action #{post_match_action_count}: {action_to_write.strip()}")
-            
-            write_action(action_to_write)
+            # Use unified menu navigation
+            _, post_match_action_count = handle_menu_navigation("post_match", post_match_action_count)
 
         elif state == "active":
             # ACTIVE → DQN actions
@@ -1437,7 +1640,8 @@ if __name__ == "__main__":
     t_p = threading.Thread(target=producer, name="Producer", daemon=True)
     t_c = threading.Thread(target=consumer, name="Consumer", daemon=True)
     t_l = threading.Thread(target=learner,  name="Learner",  daemon=True)
-    t_p.start(); t_c.start(); t_l.start()
+    t_gui = threading.Thread(target=validation_gui.run_gui_thread, name="ValidationGUI", daemon=True)
+    t_p.start(); t_c.start(); t_l.start(); t_gui.start()
 
     try:
         while True:

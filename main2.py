@@ -283,12 +283,41 @@ class RoundState:
             'p1': {'count': None, 'start': None},
             'p2': {'count': None, 'start': None},
         }
-        self.CONFIRMATION_TIME = 0.3
+        self.CONFIRMATION_TIME = 1.5
 
         # track when we last confirmed a round
         self.last_round_end_time = None
+        
+        # NEW: Robust per-indicator tracking
+        self.indicator_states = {}  # Track confirmed state for each indicator
+        self.indicator_candidates = {}  # Track candidates for each indicator
+        self.indicator_cooldowns = {}  # Prevent duplicate logging
+        self.INDICATOR_CONFIRMATION_TIME = 0.3  # How long state must persist (reduced to match game timing)
+        self.INDICATOR_COOLDOWN_TIME = 10.0  # How long to ignore after logging
+        
+        # Initialize all indicators
+        indicators = ['p1_round1', 'p1_round2', 'p2_round1', 'p2_round2']
+        for indicator in indicators:
+            self.indicator_states[indicator] = 'blue'  # Start as blue (not won)
+            self.indicator_candidates[indicator] = {'state': None, 'start_time': None}
+            self.indicator_cooldowns[indicator] = 0.0
+        
+        # Match reset detection
+        self.match_reset_candidate = {'start_time': None, 'confirmed': False}
+        self.last_match_reset_time = 0.0
+        self.MATCH_RESET_CONFIRMATION_TIME = 2.0  # 2 seconds all blue
+        self.MATCH_RESET_COOLDOWN = 10.0  # 10 seconds between resets
+        
+        # NEW: Two-phase health-based round detection
+        self.pending_health_winner = None  # Store winner detected by health, pending confirmation
+        
+        # Match end timeout detection
+        self.all_won_timeout_candidate = {'start_time': None, 'confirmed': False}
+        self.last_timeout_match_end = 0.0
+        self.ALL_WON_TIMEOUT = 10.0  # 10 seconds all non-blue
+        self.TIMEOUT_MATCH_END_COOLDOWN = 15.0  # 15 seconds between timeout detections
 
-        log_state(f"🔄 RoundState initialized: P1:0 P2:0 (baseline system)")
+        log_state(f"🔄 RoundState initialized: P1:0 P2:0 (robust indicator system)")
 
     def clear_candidate(self, player):
         self.cand[player] = {'count': None, 'start': None}
@@ -305,6 +334,204 @@ class RoundState:
     def get_current_state(self):
         """Return the current confirmed round counts."""
         return self.confirmed['p1'], self.confirmed['p2']
+    
+    def count_won_rounds_from_indicators(self, indicator_states):
+        """Count won rounds from indicator states (non-blue = won)"""
+        p1_rounds = sum(1 for k, v in indicator_states.items() 
+                       if k.startswith('p1_') and v != 'blue')
+        p2_rounds = sum(1 for k, v in indicator_states.items() 
+                       if k.startswith('p2_') and v != 'blue')
+        return p1_rounds, p2_rounds
+    
+    def get_match_status_message(self, p1_rounds, p2_rounds):
+        """Generate clear match status message"""
+        p1_needed = max(0, 2 - p1_rounds)
+        p2_needed = max(0, 2 - p2_rounds)
+        
+        status = f"Round Status: P1:{p1_rounds}, P2:{p2_rounds}"
+        
+        if p1_rounds >= 2:
+            return f"{status} - P1 WINS MATCH!"
+        elif p2_rounds >= 2:
+            return f"{status} - P2 WINS MATCH!"
+        else:
+            needs = []
+            if p1_needed > 0:
+                needs.append(f"P1 needs {p1_needed} more")
+            if p2_needed > 0:
+                needs.append(f"P2 needs {p2_needed} more")
+            return f"{status} - {', '.join(needs)} round(s) to win"
+    
+    
+    def detect_match_reset(self, current_states):
+        """
+        Robust match reset detection with confirmation period.
+        Returns True only when a reset is confirmed after sustained all-blue state.
+        """
+        current_time = time.time()
+        
+        # Check if we're in cooldown period
+        if current_time < (self.last_match_reset_time + self.MATCH_RESET_COOLDOWN):
+            return False
+        
+        # Check if all indicators are currently blue
+        all_blue_now = all(state == 'blue' for state in current_states.values())
+        
+        # Check if we previously had any wins (to distinguish from starting state)
+        had_previous_wins = any(state != 'blue' for state in self.indicator_states.values())
+        
+        if all_blue_now and had_previous_wins:
+            # All blue after having wins - potential reset
+            if self.match_reset_candidate['start_time'] is None:
+                # Start tracking reset candidate
+                self.match_reset_candidate['start_time'] = current_time
+                log_debug(f"🔍 Match reset candidate: All indicators blue (had previous wins)")
+                return False
+            else:
+                # Check if enough time has passed
+                elapsed = current_time - self.match_reset_candidate['start_time']
+                if elapsed >= self.MATCH_RESET_CONFIRMATION_TIME:
+                    if not self.match_reset_candidate['confirmed']:
+                        # CONFIRMED RESET!
+                        self.match_reset_candidate['confirmed'] = True
+                        self.last_match_reset_time = current_time
+                        log_debug(f"✅ Match reset confirmed after {elapsed:.1f}s")
+                        return True
+                else:
+                    # Still waiting for confirmation
+                    if int(elapsed * 2) != int((elapsed - 0.5) * 2):  # Every 0.5 seconds
+                        log_debug(f"⏳ Match reset: All blue ({elapsed:.1f}s/{self.MATCH_RESET_CONFIRMATION_TIME}s)")
+        else:
+            # Not all blue or no previous wins - clear candidate
+            if self.match_reset_candidate['start_time'] is not None:
+                if not all_blue_now:
+                    log_debug(f"🚫 Match reset candidate cleared: Not all blue anymore")
+                self.match_reset_candidate = {'start_time': None, 'confirmed': False}
+        
+        return False
+    
+    def detect_all_won_timeout(self, current_states):
+        """
+        Detect when all 4 round indicators have been non-blue for extended period.
+        This indicates match is definitely over and should trigger match end.
+        """
+        current_time = time.time()
+        
+        # Check if we're in cooldown period
+        if current_time < (self.last_timeout_match_end + self.TIMEOUT_MATCH_END_COOLDOWN):
+            return False
+        
+        # Check if ALL indicators are non-blue (match complete state)
+        all_non_blue = all(state != 'blue' for state in current_states.values())
+        
+        if all_non_blue:
+            # All rounds won - potential match end timeout
+            if self.all_won_timeout_candidate['start_time'] is None:
+                # Start tracking timeout candidate
+                self.all_won_timeout_candidate['start_time'] = current_time
+                log_debug(f"🔍 Match end timeout candidate: All 4 rounds won")
+                return False
+            else:
+                # Check if enough time has passed
+                elapsed = current_time - self.all_won_timeout_candidate['start_time']
+                if elapsed >= self.ALL_WON_TIMEOUT:
+                    if not self.all_won_timeout_candidate['confirmed']:
+                        # CONFIRMED TIMEOUT MATCH END!
+                        self.all_won_timeout_candidate['confirmed'] = True
+                        self.last_timeout_match_end = current_time
+                        
+                        # Determine winner based on current indicators
+                        p1_rounds, p2_rounds = self.count_won_rounds_from_indicators(current_states)
+                        winner = 'p1' if p1_rounds >= p2_rounds else 'p2'
+                        
+                        log_match(f"⏰ MATCH END TIMEOUT! All rounds completed for {elapsed:.1f}s")
+                        log_match(f"   Winner: {winner.upper()} (P1:{p1_rounds}, P2:{p2_rounds})")
+                        return {'type': 'timeout_match_end', 'winner': winner, 'p1_rounds': p1_rounds, 'p2_rounds': p2_rounds}
+                else:
+                    # Still waiting for timeout - progress logging
+                    if int(elapsed * 2) != int((elapsed - 0.5) * 2):  # Every 0.5 seconds
+                        log_debug(f"⏳ Match end timeout: All won ({elapsed:.1f}s/{self.ALL_WON_TIMEOUT}s)")
+        else:
+            # Not all won - clear timeout candidate
+            if self.all_won_timeout_candidate['start_time'] is not None:
+                log_debug(f"🚫 Match end timeout candidate cleared: Not all rounds won")
+                self.all_won_timeout_candidate = {'start_time': None, 'confirmed': False}
+        
+        return False
+    
+    def update_robust_detection(self, current_indicator_states):
+        """
+        Robust indicator change detection with confirmation periods and cooldowns.
+        Returns list of confirmed round wins.
+        """
+        current_time = time.time()
+        confirmed_wins = []
+        
+        for indicator, current_state in current_indicator_states.items():
+            # Get current confirmed state for this indicator
+            confirmed_state = self.indicator_states[indicator]
+            candidate = self.indicator_candidates[indicator]
+            
+            # Skip if in cooldown period
+            if current_time < self.indicator_cooldowns[indicator]:
+                continue
+            
+            # HYSTERESIS: Once won (non-blue), stays won until match reset
+            if confirmed_state != 'blue':
+                continue
+            
+            # Check if current state is different from confirmed (blue → non-blue transition)
+            if current_state != 'blue' and confirmed_state == 'blue':
+                # Starting or continuing a candidate transition
+                if candidate['state'] == current_state:
+                    # Same candidate - check if enough time has passed
+                    elapsed = current_time - candidate['start_time']
+                    if elapsed >= self.INDICATOR_CONFIRMATION_TIME:
+                        # CONFIRMED! Log the round win
+                        player = 'P1' if indicator.startswith('p1_') else 'P2'
+                        round_num = '1' if 'round1' in indicator else '2'
+                        
+                        confirmed_wins.append({
+                            'player': player,
+                            'round_number': round_num,
+                            'indicator': indicator,
+                            'transition': f"blue→{current_state}",
+                            'confirmation_time': elapsed
+                        })
+                        
+                        # Update confirmed state and set cooldown
+                        self.indicator_states[indicator] = current_state
+                        self.indicator_cooldowns[indicator] = current_time + self.INDICATOR_COOLDOWN_TIME
+                        
+                        # Clear candidate
+                        self.indicator_candidates[indicator] = {'state': None, 'start_time': None}
+                        
+                        log_debug(f"✅ {indicator} confirmed as {current_state} after {elapsed:.2f}s")
+                    else:
+                        # Still waiting for confirmation - more frequent progress log due to short window
+                        if int(elapsed * 10) != int((elapsed - 0.1) * 10):  # Every 0.1 seconds
+                            log_debug(f"⏳ {indicator}: {current_state} ({elapsed:.2f}s/{self.INDICATOR_CONFIRMATION_TIME}s)")
+                        
+                elif candidate['state'] != current_state:
+                    # Different candidate state - start new timer
+                    if current_state != 'blue':  # Only track non-blue candidates
+                        self.indicator_candidates[indicator] = {
+                            'state': current_state, 
+                            'start_time': current_time
+                        }
+                        log_debug(f"🔍 {indicator}: New candidate {current_state} (was {candidate['state'] or 'none'})")
+                    else:
+                        # Went back to blue - clear candidate
+                        if candidate['state'] is not None:
+                            log_debug(f"🚫 {indicator}: Returned to blue, candidate {candidate['state']} cleared")
+                        self.indicator_candidates[indicator] = {'state': None, 'start_time': None}
+            else:
+                # Current state matches confirmed or went back to blue - clear any candidate
+                if candidate['state'] is not None:
+                    log_debug(f"🚫 {indicator}: State reverted, candidate {candidate['state']} cleared")
+                    self.indicator_candidates[indicator] = {'state': None, 'start_time': None}
+        
+        return confirmed_wins
 
     def reset(self):
         """Reset round state for a new match."""
@@ -314,12 +541,41 @@ class RoundState:
         self.in_death_period = False
         self.clear_all_candidates()
         self.last_round_end_time = None
-        log_state(f"🔄 RoundState reset for new match: P1:0 P2:0 (baseline cleared)")
+        
+        # Reset robust indicator tracking
+        indicators = ['p1_round1', 'p1_round2', 'p2_round1', 'p2_round2']
+        for indicator in indicators:
+            self.indicator_states[indicator] = 'blue'  # Reset to not won
+            self.indicator_candidates[indicator] = {'state': None, 'start_time': None}
+            self.indicator_cooldowns[indicator] = 0.0
+        
+        # Reset match reset detection
+        self.match_reset_candidate = {'start_time': None, 'confirmed': False}
+        # Don't reset last_match_reset_time to maintain cooldown
+        
+        # Reset timeout match end detection
+        self.all_won_timeout_candidate = {'start_time': None, 'confirmed': False}
+        # Don't reset last_timeout_match_end to maintain cooldown
+            
+        log_state(f"🔄 RoundState reset for new match: P1:0 P2:0 (robust system cleared)")
         
     def capture_baseline(self, indicator_states):
         """Capture current indicator states as baseline for this round"""
         self.baseline_indicators = indicator_states.copy()
+        
+        # Initialize robust tracking with current states
+        for indicator, state in indicator_states.items():
+            if state != 'blue':  # Already won indicators
+                self.indicator_states[indicator] = state
+                # Clear any pending candidates since these are confirmed
+                self.indicator_candidates[indicator] = {'state': None, 'start_time': None}
+        
+        # Count and report current round status
+        p1_rounds, p2_rounds = self.count_won_rounds_from_indicators(indicator_states)
+        status_msg = self.get_match_status_message(p1_rounds, p2_rounds)
+        
         log_state(f"📸 Baseline captured: {indicator_states}")
+        log_round(f"🎯 {status_msg}")
         
     def check_for_changes(self, current_indicators, both_at_zero):
         """Compare current indicators to baseline and update pending changes"""
@@ -336,15 +592,16 @@ class RoundState:
             return
             
         # Check for changes from baseline
+        # Count non-blue indicators as won rounds (red or unknown = won)
         p1_baseline_rounds = sum(1 for k, v in self.baseline_indicators.items() 
-                                if k.startswith('p1_') and v == 'red')
+                                if k.startswith('p1_') and v != 'blue')
         p2_baseline_rounds = sum(1 for k, v in self.baseline_indicators.items() 
-                                if k.startswith('p2_') and v == 'red')
+                                if k.startswith('p2_') and v != 'blue')
         
         p1_current_rounds = sum(1 for k, v in current_indicators.items() 
-                               if k.startswith('p1_') and v == 'red')
+                               if k.startswith('p1_') and v != 'blue')
         p2_current_rounds = sum(1 for k, v in current_indicators.items() 
-                               if k.startswith('p2_') and v == 'red')
+                               if k.startswith('p2_') and v != 'blue')
         
         # Detect changes
         p1_change = p1_current_rounds - p1_baseline_rounds
@@ -352,11 +609,23 @@ class RoundState:
         
         # Update pending changes if we detect increments
         if p1_change > 0 and p1_change != self.pending_round_changes['p1']:
-            log_debug(f"🔍 P1 indicator change detected: +{p1_change} from baseline (during death)")
+            # Log specific indicator changes for debugging
+            changed_indicators = []
+            for k, v in current_indicators.items():
+                if k.startswith('p1_') and self.baseline_indicators[k] == 'blue' and v != 'blue':
+                    changed_indicators.append(f"{k}:{self.baseline_indicators[k]}→{v}")
+            
+            log_debug(f"🔍 P1 round win detected: +{p1_change} from baseline (indicators: {', '.join(changed_indicators)})")
             self.pending_round_changes['p1'] = p1_change
             
         if p2_change > 0 and p2_change != self.pending_round_changes['p2']:
-            log_debug(f"🔍 P2 indicator change detected: +{p2_change} from baseline (during death)")
+            # Log specific indicator changes for debugging
+            changed_indicators = []
+            for k, v in current_indicators.items():
+                if k.startswith('p2_') and self.baseline_indicators[k] == 'blue' and v != 'blue':
+                    changed_indicators.append(f"{k}:{self.baseline_indicators[k]}→{v}")
+                    
+            log_debug(f"🔍 P2 round win detected: +{p2_change} from baseline (indicators: {', '.join(changed_indicators)})")
             self.pending_round_changes['p2'] = p2_change
             
     def confirm_pending_changes(self):
@@ -377,7 +646,8 @@ class RoundState:
             if self.pending_round_changes['p1'] == 1:
                 self.confirmed['p1'] += 1
                 winner = 'p1'
-                log_round(f"🎯 ROUND CONFIRMED: P1 won! (P1:{self.confirmed['p1']} P2:{self.confirmed['p2']})")
+                status_msg = self.get_match_status_message(self.confirmed['p1'], self.confirmed['p2'])
+                log_round(f"🎯 P1 WINS ROUND! {status_msg}")
             else:
                 log_debug(f"⚠️ INVALID: P1 pending change is {self.pending_round_changes['p1']}, not 1")
                 
@@ -386,7 +656,8 @@ class RoundState:
             if self.pending_round_changes['p2'] == 1:
                 self.confirmed['p2'] += 1
                 winner = 'p2'
-                log_round(f"🎯 ROUND CONFIRMED: P2 won! (P1:{self.confirmed['p1']} P2:{self.confirmed['p2']})")
+                status_msg = self.get_match_status_message(self.confirmed['p1'], self.confirmed['p2'])
+                log_round(f"🎯 P2 WINS ROUND! {status_msg}")
             else:
                 log_debug(f"⚠️ INVALID: P2 pending change is {self.pending_round_changes['p2']}, not 1")
         
@@ -524,16 +795,22 @@ class MatchTracker:
         if p1_rounds >= 2:
             self.p1_match_wins += 1
             result = ("match_over", "p1")
-            log_match(f"🏁 MATCH #{self.match_number} OVER: P1 wins {p1_rounds}-{p2_rounds}!")
+            log_match("=" * 60)
+            log_match(f"🏆 MATCH #{self.match_number} COMPLETE!")
+            log_match(f"🏁 P1 WINS THE MATCH! Final Score: {p1_rounds}-{p2_rounds}")
             log_match(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
+            log_match("=" * 60)
             self.match_number += 1
             return result
 
         elif p2_rounds >= 2:
             self.p2_match_wins += 1
             result = ("match_over", "p2")
-            log_match(f"🏁 MATCH #{self.match_number} OVER: P2 wins {p1_rounds}-{p2_rounds}!")
+            log_match("=" * 60)
+            log_match(f"🏆 MATCH #{self.match_number} COMPLETE!")
+            log_match(f"🏁 P2 WINS THE MATCH! Final Score: {p1_rounds}-{p2_rounds}")
             log_match(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
+            log_match("=" * 60)
             self.match_number += 1
             return result
 
@@ -704,6 +981,11 @@ def consumer():
     DEATH_THRESHOLD = 0.0      # Both must be exactly 0%
     ALIVE_THRESHOLD = 98.0     # Both must be >99% to confirm round start
     ZERO_HEALTH_DURATION = 1.0 # Must be at 0% for 1 second
+    
+    # NEW: Precision health-based round end detection
+    PRECISE_ZERO_THRESHOLD = 0.000001  # 6 decimal precision for true zero
+    ZERO_CONFIRMATION_TIME = 1.2  # 1.2 seconds at true zero to confirm round end
+    player_at_zero_since = {'p1': None, 'p2': None}  # Track each player's zero state
 
     # Initialize robust round and match tracking
     round_state = RoundState()
@@ -759,6 +1041,12 @@ def consumer():
     # Health logging timer
     last_health_log_time = time.time()
     
+    # Status update timer
+    last_status_update_time = time.time()
+    
+    # Track previous indicator states for immediate change detection
+    previous_indicator_states = None
+    
     while not stop_event.is_set():
         # Initialize flags for this frame
         health_restoration_detected = False
@@ -781,18 +1069,56 @@ def consumer():
         # If we got here, we have a frame - process it normally
         global_step += 1
         
-        # 1) Compute health % once
+        # 1) Compute health % with high precision
         strip = frame[Y_HEALTH:Y_HEALTH+1]
         m1    = cv2.inRange(strip[:, X1_P1:X2_P1], LOWER_BGR, UPPER_BGR)
         m2    = cv2.inRange(strip[:, X1_P2:X2_P2], LOWER_BGR, UPPER_BGR)
-        pct1  = cv2.countNonZero(m1) / LEN_P1 * 100.0
-        pct2  = cv2.countNonZero(m2) / LEN_P2 * 100.0
+        # Use float64 for higher precision health calculation
+        pct1  = float(cv2.countNonZero(m1)) / float(LEN_P1) * 100.0
+        pct2  = float(cv2.countNonZero(m2)) / float(LEN_P2) * 100.0
 
-        # Log health every second
+        # Log health every second with high precision
         current_time = time.time()
         if current_time - last_health_log_time >= 1.0:
-            # log_state(f"Health: P1={pct1:.1f}%, P2={pct2:.1f}%")
+            log_state(f"Health: P1={pct1:.6f}%, P2={pct2:.6f}%")
             last_health_log_time = current_time
+        
+        # PRECISION HEALTH-BASED ROUND END DETECTION
+        # Track each player's zero state separately with high precision
+        for player, pct in [('p1', pct1), ('p2', pct2)]:
+            if pct <= PRECISE_ZERO_THRESHOLD:
+                if player_at_zero_since[player] is None:
+                    player_at_zero_since[player] = current_time
+                    log_state(f"⚠️ {player.upper()} at precise zero: {pct:.6f}% - starting timer...")
+            else:
+                if player_at_zero_since[player] is not None:
+                    zero_duration = current_time - player_at_zero_since[player]
+                    log_debug(f"{player.upper()} recovered from zero after {zero_duration:.2f}s: {pct:.6f}%")
+                player_at_zero_since[player] = None
+        
+        # Check for round end based on sustained zero health (2+ seconds)
+        precision_round_end_detected = False
+        precision_round_winner = None
+        
+        for player, pct in [('p1', pct1), ('p2', pct2)]:
+            if player_at_zero_since[player] is not None:
+                zero_duration = current_time - player_at_zero_since[player]
+                
+                # Progress logging every 0.5 seconds
+                if int(zero_duration * 2) != int((zero_duration - 0.5) * 2):
+                    log_debug(f"⏳ {player.upper()} zero health: {zero_duration:.2f}s/{ZERO_CONFIRMATION_TIME}s")
+                
+                if zero_duration >= ZERO_CONFIRMATION_TIME and state == "active":
+                    # ROUND END DETECTED! This player lost - store as pending
+                    pending_winner = 'p2' if player == 'p1' else 'p1'
+                    round_state.pending_health_winner = pending_winner
+                    
+                    log_round(f"🎯 ROUND END via HEALTH! {player.upper()} at zero for {zero_duration:.2f}s")
+                    log_round(f"   → {pending_winner.upper()} WINS ROUND (PENDING CONFIRMATION)!")
+                    
+                    # Clear the zero tracking since round ended
+                    player_at_zero_since[player] = None
+                    break
 
         # HEALTH-BASED ROUND DETECTION
         # Check if both players are at 0% health
@@ -823,8 +1149,10 @@ def consumer():
                 
         # Debug log health values periodically
         if global_step % 60 == 0:
-            log_debug(f"Health check: P1={pct1:.1f}%, P2={pct2:.1f}%, State={state}, "
-                     f"Zero tracking={'Yes' if both_at_zero_since else 'No'}")
+            log_debug(f"Health check: P1={pct1:.6f}%, P2={pct2:.6f}%, State={state}")
+            log_debug(f"Zero tracking: Both={'Yes' if both_at_zero_since else 'No'}, "
+                     f"P1={'Yes' if player_at_zero_since['p1'] else 'No'}, "
+                     f"P2={'Yes' if player_at_zero_since['p2'] else 'No'}")
 
         # HEALTH DETECTION FALLBACK LOGIC
         # Check if both health bars are undetectable (0%)
@@ -856,8 +1184,7 @@ def consumer():
 
                     # Re-compute indicators
                     round_indicators, indicator_states = detect_round_indicators(frame)
-                    detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
-                    detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
+                    detected_p1_rounds, detected_p2_rounds = round_state.count_won_rounds_from_indicators(indicator_states)
 
                     # Special handling if we were in post_match_waiting before fallback
                     if state_before_fallback == "post_match_waiting":
@@ -865,6 +1192,7 @@ def consumer():
                         if detected_p1_rounds == 0 and detected_p2_rounds == 0:
                             log_state("   → Post-match navigation complete, new match detected")
                             round_state.reset()  # CRITICAL: Reset for new match!
+                            previous_indicator_states = None  # Reset immediate detection
                             state = "waiting_for_match"
                         else:
                             # Still in post-match state
@@ -931,10 +1259,57 @@ def consumer():
 
         # 2) ALWAYS detect rounds - STATE INDEPENDENT!
         round_indicators, indicator_states = detect_round_indicators(frame)
-        detected_p1_rounds = sum([round_indicators['p1_round1'], round_indicators['p1_round2']])
-        detected_p2_rounds = sum([round_indicators['p2_round1'], round_indicators['p2_round2']])
+        detected_p1_rounds, detected_p2_rounds = round_state.count_won_rounds_from_indicators(indicator_states)
         
-        # Log periodically
+        # 2.5) ROBUST ROUND WIN DETECTION - Confirmation period with anti-glitch protection
+        robust_wins = round_state.update_robust_detection(indicator_states)
+        for win in robust_wins:
+            # Log the confirmed round end
+            log_round(f"🎯 ROUND ENDED! {win['player']} wins round {win['round_number']}! "
+                     f"({win['indicator']}: {win['transition']}) "
+                     f"[Confirmed after {win['confirmation_time']:.2f}s]")
+            
+            # Show current status after the win
+            current_p1, current_p2 = round_state.count_won_rounds_from_indicators(indicator_states)
+            status_msg = round_state.get_match_status_message(current_p1, current_p2)
+            log_round(f"   → {status_msg}")
+        
+        # 2.6) MATCH END TIMEOUT DETECTION - All rounds won for extended period (only during active states)
+        timeout_result = None
+        if state in ["active", "waiting_for_round"]:  # Only check during match gameplay
+            timeout_result = round_state.detect_all_won_timeout(indicator_states)
+        
+        if timeout_result:
+            # Timeout match end detected - treat like normal match end
+            match_result = ("match_over", timeout_result['winner'])
+            match_tracker.p1_match_wins += 1 if timeout_result['winner'] == 'p1' else 0
+            match_tracker.p2_match_wins += 1 if timeout_result['winner'] == 'p2' else 0
+            
+            log_match("=" * 60)
+            log_match(f"🏆 MATCH #{match_tracker.match_number} COMPLETE! (TIMEOUT)")
+            log_match(f"🏁 {timeout_result['winner'].upper()} WINS THE MATCH! Final Score: {timeout_result['p1_rounds']}-{timeout_result['p2_rounds']}")
+            log_match(f"📊 Overall Matches: P1:{match_tracker.p1_match_wins} P2:{match_tracker.p2_match_wins}")
+            log_match("=" * 60)
+            
+            # Trigger match end actions
+            on_match_end()
+            log_state(f"🎯 Timeout match over! Entering post-match navigation mode...")
+            state = "post_match_waiting"
+            round_state.clear_all_candidates()
+            alive_since = None
+            death_since = None
+            post_match_entry_logged = False
+            post_match_action_count = 0
+            match_tracker.match_number += 1
+
+        # 2.7) ROBUST MATCH RESET DETECTION - Confirmation period with anti-spam protection  
+        if round_state.detect_match_reset(indicator_states):
+            log_match("🔄 MATCH RESET CONFIRMED - All indicators cleared to blue [Sustained for 2.0s]")
+            
+        # Update previous states for next frame (keep for match reset detection)
+        previous_indicator_states = indicator_states.copy()
+        
+        # Log periodically for debug
         if global_step % 30 == 0:
             log_debug(f"Frame health: P1={pct1:.2f}%, P2={pct2:.2f}%")
             log_debug(f"Round indicators: {round_indicators}")
@@ -944,15 +1319,58 @@ def consumer():
             log_debug(f"Baseline system - Confirmed: P1={round_state.confirmed['p1']} P2={round_state.confirmed['p2']}, "
                      f"Pending: P1={round_state.pending_round_changes['p1']} P2={round_state.pending_round_changes['p2']}, "
                      f"Death period: {round_state.in_death_period}")
+        
+        # Periodic status updates during active rounds (every 30 seconds)
+        current_time = time.time()
+        if (current_time - last_status_update_time >= 30.0 and 
+            state == "active" and 
+            (detected_p1_rounds > 0 or detected_p2_rounds > 0)):
+            
+            status_msg = round_state.get_match_status_message(detected_p1_rounds, detected_p2_rounds)
+            log_round(f"⏰ {status_msg}")
+            last_status_update_time = current_time
 
         # 3) Update round state using NEW baseline system
         both_at_zero = (pct1 <= DEATH_THRESHOLD and pct2 <= DEATH_THRESHOLD)
         
         # Handle health restoration detected earlier
         round_result = None
-        if health_restoration_detected:
+        
+        # PRIORITY: Check precision health-based round end first
+        if precision_round_end_detected:
+            # Create round result from health-based detection
+            round_result = ("round_won", precision_round_winner, 
+                          round_state.confirmed['p1'] + (1 if precision_round_winner == 'p1' else 0),
+                          round_state.confirmed['p2'] + (1 if precision_round_winner == 'p2' else 0))
+            
+            # Update the confirmed state immediately
+            round_state.confirmed[precision_round_winner] += 1
+            round_state.last_round_end_time = current_time
+            
+            # Show match status
+            status_msg = round_state.get_match_status_message(
+                round_state.confirmed['p1'], round_state.confirmed['p2'])
+            log_round(f"   → {status_msg}")
+            
+        elif health_restoration_detected:
             # ROUND START: Confirm pending changes and capture new baseline
             round_result = round_state.on_round_start(indicator_states)
+            
+            # Check for pending health-based winner to confirm
+            if round_state.pending_health_winner is not None:
+                winner = round_state.pending_health_winner
+                round_state.confirmed[winner] += 1
+                
+                log_round(f"✅ CONFIRMED: {winner.upper()} wins round (health-based detection)")
+                log_round(f"📊 SCORE: P1={round_state.confirmed['p1']} P2={round_state.confirmed['p2']}")
+                
+                # Check for 1-1 decisive match end before clearing pending winner
+                if round_state.confirmed['p1'] == 1 and round_state.confirmed['p2'] == 1:
+                    log_round(f"🏆 MATCH END! {winner.upper()} wins match 2-1!")
+                    state = "post_match_waiting"
+                
+                # Clear pending winner after processing
+                round_state.pending_health_winner = None
             
             # Handle state transitions that were removed earlier
             if state in ["waiting_for_match", "waiting_for_round"]:
@@ -1140,6 +1558,7 @@ def consumer():
                     log_state(f"🆕 NEW MATCH DETECTED! Starting Match #{match_tracker.match_number} "
                              f"(indicators: {'all blue' if all_blue else 'cleared'})")
                     round_state.reset()  # NOW we reset for the new match
+                    previous_indicator_states = None  # Reset immediate detection
                     
                     # Reset the debug flags
                     post_match_entry_logged = False
