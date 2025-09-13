@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""
+Neural network trainer module.
+Handles DQN training, model updates, and checkpointing.
+"""
+import time
+import torch
+import torch.nn as nn
+import re
+import os
+
+from config import *
+from logging_utils import log_learner, log_state
+from models import DQNNet  # kept for clarity; networks come from shared_state
+from game_vision import legal_mask_from_extras
+from torch.utils.tensorboard import SummaryWriter
+
+
+# How often to print Q stats + loss to console
+_CONSOLE_LOG_EVERY_STEPS = 100
+# How often to log buffer stats
+_BUFFER_LOG_EVERY_STEPS = 1000
+# Gradient clipping (you can also move this to config if preferred)
+_MAX_GRAD_NORM = 1.0
+# Optional clamp on TD targets for stability (keep your previous behavior)
+_TARGET_CLAMP = (-3.0, 3.0)
+
+
+class Trainer:
+    """Handles neural network training and model management"""
+
+    def __init__(self, shared_state):
+        self.shared = shared_state
+        self.writer = SummaryWriter(log_dir=f"{LOG_DIR}/tensorboard_trainer")
+
+        # Optimizer & loss
+        self.optimizer = torch.optim.Adam(
+            self.shared.policy_net.parameters(),
+            lr=LEARNING_RATE
+        )
+        self.criterion = nn.SmoothL1Loss()  # Huber loss
+
+        # Training state
+        self.train_steps = 0
+        self.learn_tick = 0
+
+        # Load checkpoint if available
+        self.load_checkpoint()
+
+        log_state(f"Trainer initialized - {'TEST MODE' if TEST_MODE else 'TRAINING MODE'}")
+
+    def load_checkpoint(self):
+        """Load model checkpoint if specified"""
+        if LOAD_CHECKPOINT and os.path.exists(LOAD_CHECKPOINT):
+            checkpoint = torch.load(LOAD_CHECKPOINT, map_location=DEVICE)
+            self.shared.policy_net.load_state_dict(checkpoint)
+            self.shared.target_net.load_state_dict(checkpoint)
+            log_state(f"✅ Loaded checkpoint from {LOAD_CHECKPOINT}")
+
+            # Extract match number from filename
+            match = re.search(r'model_match_(\d+)', LOAD_CHECKPOINT)
+            if match:
+                start_match = int(match.group(1)) + 1
+                self.shared.match_number = start_match
+                log_state(f"   Continuing from match {start_match}")
+        else:
+            # Start target as a copy of policy
+            self.shared.target_net.load_state_dict(self.shared.policy_net.state_dict())
+            if LOAD_CHECKPOINT:
+                log_state(f"⚠️  Checkpoint {LOAD_CHECKPOINT} not found, training from scratch")
+
+    @torch.no_grad()
+    def soft_update(self, tau=TAU):
+        """Soft update of target network parameters"""
+        for tp, sp in zip(self.shared.target_net.parameters(),
+                          self.shared.policy_net.parameters()):
+            tp.data.mul_(1.0 - tau).add_(sp.data, alpha=tau)
+
+    def train_step(self):
+        """Perform one training step (Double-DQN / masked)"""
+        # Sample batch from replay buffer
+        (states, extras, actions, rewards,
+         next_states, next_extras, dones) = self.shared.replay_buffer.sample(BATCH_SIZE)
+
+        # Periodic buffer stats
+        if self.train_steps % _BUFFER_LOG_EVERY_STEPS == 0:
+            self.log_buffer_stats()
+
+        # -----------------------
+        # Compute Double-DQN target with legality masking
+        # -----------------------
+        with torch.no_grad():
+            # Mask illegal actions in next state
+            mask_next = legal_mask_from_extras(next_extras)  # [B, A] boolean
+
+            # Online net selects argmax action
+            q_online_next = self.shared.policy_net(next_states, next_extras)  # [B, A]
+            q_online_next = q_online_next.masked_fill(~mask_next, float("-inf"))
+            next_actions = q_online_next.argmax(1, keepdim=True)  # [B, 1]
+
+            # Target net evaluates that action
+            q_target_next = self.shared.target_net(next_states, next_extras)  # [B, A]
+            q_target_next = q_target_next.masked_fill(~mask_next, float("-inf"))
+            next_q = q_target_next.gather(1, next_actions).squeeze(1)  # [B]
+
+            # Target = r + γ (1-d) Q_tgt(s', a*)
+            target = rewards + GAMMA * next_q * (1.0 - dones.float())
+            if _TARGET_CLAMP is not None:
+                lo, hi = _TARGET_CLAMP
+                target = target.clamp(lo, hi)
+
+        # -----------------------
+        # Forward pass (single forward; reuse for loss & Q stats)
+        # -----------------------
+        q_batch = self.shared.policy_net(states, extras)                      # [B, A]
+        q_vals = q_batch.gather(1, actions.unsqueeze(1)).squeeze(1)           # [B]
+
+        loss = self.criterion(q_vals, target)
+
+        # -----------------------
+        # Backward + step
+        # -----------------------
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        # Gradient norms (before clipping)
+        total_grad_norm = self.log_gradients()
+
+        # Clip gradients
+        if _MAX_GRAD_NORM is not None and _MAX_GRAD_NORM > 0:
+            clipped_norm = torch.nn.utils.clip_grad_norm_(
+                self.shared.policy_net.parameters(), max_norm=_MAX_GRAD_NORM
+            )
+            self.writer.add_scalar("gradients/norm_after_clip",
+                                   float(clipped_norm), self.train_steps)
+
+        self.optimizer.step()
+
+        # Soft update target network
+        self.soft_update()
+
+        # -----------------------
+        # Metrics: loss, buffer, Q stats, TD-error
+        # -----------------------
+        self.writer.add_scalar("loss/train", float(loss.item()), self.train_steps)
+        self.writer.add_scalar("training/learning_rate", float(LEARNING_RATE), self.train_steps)
+        self.writer.add_scalar("buffer/size", int(self.shared.replay_buffer.len), self.train_steps)
+        self.writer.add_scalar(
+            "buffer/utilization",
+            float(self.shared.replay_buffer.len) / float(self.shared.replay_buffer.size),
+            self.train_steps
+        )
+
+        # Q statistics (detach to avoid graph retention)
+        with torch.no_grad():
+            q_mean = q_batch.mean().item()
+            q_min = q_batch.min().item()
+            q_max = q_batch.max().item()
+            # Per-action mean Q across batch
+            q_by_action = q_batch.mean(dim=0).detach().cpu().tolist()  # len = NUM_ACTIONS
+
+            # TD error stats (|target - Q(s,a)|)
+            current_q_detached = q_batch.detach().gather(1, actions.unsqueeze(1)).squeeze(1)
+            td_error = (target - current_q_detached).abs()
+            self.writer.add_scalar("training/td_error_mean", td_error.mean().item(), self.train_steps)
+            self.writer.add_scalar("training/td_error_max",  td_error.max().item(),  self.train_steps)
+
+            # Write Q stats to TensorBoard
+            self.writer.add_scalar("q/mean", q_mean, self.train_steps)
+            self.writer.add_scalar("q/min",  q_min,  self.train_steps)
+            self.writer.add_scalar("q/max",  q_max,  self.train_steps)
+            for i, action_name in enumerate(ACTIONS):
+                self.writer.add_scalar(f"q/mean_per_action/{action_name}", q_by_action[i], self.train_steps)
+
+        # Layer stats occasionally (heavy)
+        if self.train_steps % 500 == 0:
+            self.log_layer_stats()
+
+        self.train_steps += 1
+
+        # -----------------------
+        # Console logging (loss + Qs)
+        # -----------------------
+        if self.train_steps % _CONSOLE_LOG_EVERY_STEPS == 0:
+            # Compact per-action means
+            per_act_str = ", ".join(
+                f"{ACTIONS[i]}={q_by_action[i]:.2f}" for i in range(len(q_by_action))
+            )
+            log_learner(
+                f"[Learner] step={self.train_steps:6d} "
+                f"loss={loss.item():.4f} "
+                f"q_mean={q_mean:.3f} q_min={q_min:.3f} q_max={q_max:.3f} "
+                f"buf={self.shared.replay_buffer.len} grad_norm={total_grad_norm:.3f}"
+            )
+            # Full Q vector for the first item in the batch (great for debugging)
+            q0 = q_batch[0].detach().cpu().tolist()
+            q0_str = ", ".join(f"{ACTIONS[i]}={q0[i]:.2f}" for i in range(len(q0)))
+            log_learner(f"[Learner] Q[0]: {q0_str}")
+
+        return float(loss.item())
+
+    def log_buffer_stats(self):
+        """Log replay buffer statistics"""
+        buffer = self.shared.replay_buffer
+        if buffer.len > 0:
+            rewards_in_buffer = buffer.rewards[:buffer.len]
+            self.writer.add_scalar("buffer/reward_mean",
+                                   float(rewards_in_buffer.mean()), self.train_steps)
+            self.writer.add_scalar("buffer/reward_std",
+                                   float(rewards_in_buffer.std()), self.train_steps)
+            self.writer.add_scalar("buffer/reward_min",
+                                   float(rewards_in_buffer.min()), self.train_steps)
+            self.writer.add_scalar("buffer/reward_max",
+                                   float(rewards_in_buffer.max()), self.train_steps)
+
+            # Log action distribution in buffer
+            actions_in_buffer = buffer.actions[:buffer.len]
+            for i, action_name in enumerate(ACTIONS):
+                action_pct = (actions_in_buffer == i).sum() / len(actions_in_buffer)
+                self.writer.add_scalar(f"buffer/action_distribution/{action_name}",
+                                       float(action_pct), self.train_steps)
+
+            # Log done percentage
+            dones_in_buffer = buffer.dones[:buffer.len]
+            self.writer.add_scalar("buffer/done_percentage",
+                                   float(dones_in_buffer.sum()) / float(len(dones_in_buffer)),
+                                   self.train_steps)
+
+    def log_gradients(self):
+        """Log gradient statistics before clipping"""
+        total_grad_sq = 0.0
+        for p in self.shared.policy_net.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2).item()
+                total_grad_sq += param_norm ** 2
+        total_grad_norm = total_grad_sq ** 0.5
+        self.writer.add_scalar("gradients/norm_before_clip",
+                               float(total_grad_norm), self.train_steps)
+        return total_grad_norm
+
+    def log_layer_stats(self):
+        """Log layer-wise statistics"""
+        for name, param in self.shared.policy_net.named_parameters():
+            if param.requires_grad and param.grad is not None:
+                self.writer.add_histogram(f"weights/{name}",
+                                          param.data, self.train_steps)
+                self.writer.add_histogram(f"gradients/{name}",
+                                          param.grad.data, self.train_steps)
+                self.writer.add_scalar(f"weights/{name}/mean",
+                                       float(param.data.mean().item()), self.train_steps)
+                self.writer.add_scalar(f"weights/{name}/std",
+                                       float(param.data.std().item()), self.train_steps)
+
+    def save_checkpoint(self, tag=None):
+        """Save model checkpoint (policy weights only)."""
+        match_num = self.shared.match_number
+        suffix = f"_{tag}" if tag else ""
+        model_path = f"{MODEL_DIR}/model_match_{match_num}{suffix}.pth"
+
+        # atomic-ish write
+        tmp_path = model_path + ".tmp"
+        torch.save(self.shared.policy_net.state_dict(), tmp_path)
+        os.replace(tmp_path, model_path)
+
+        msg = f"[Learner] Saved model to {model_path}"
+        log_learner(msg)
+        log_state(msg)  # mirror into the main log you’re tailing
+
+        # TB breadcrumbs
+        self.writer.add_scalar("training/checkpoint_step", self.train_steps, self.train_steps)
+        self.writer.add_text("training/checkpoint_path", model_path, self.train_steps)
+
+        # Keep your existing notes
+        self.writer.add_scalar("training/match_completed", int(match_num), self.train_steps)
+        log_learner(f"[Learner] Buffer preserved with {self.shared.replay_buffer.len} samples")
+
+    def run(self):
+        """Main training loop"""
+        if TEST_MODE:
+            log_learner("[Learner] TEST MODE - Training disabled")
+            while not self.shared.stop_event.is_set():
+                # Still check for match end to save current model state
+                if self.shared.match_end_event.wait(timeout=1.0):
+                    self.shared.match_end_event.clear()
+                    log_learner(f"[Learner] Match ended in test mode")
+                    self.shared.match_number += 1
+            return
+        CKPT_EVERY_STEPS = 1000     # save every 1k train steps
+        CKPT_EVERY_SEC   = 600      # and every 10 minutes
+        last_time_ckpt = time.time()
+        while not self.shared.stop_event.is_set():
+            self.learn_tick += 1
+
+            # Train when replay is warm and throttle by TRAIN_FREQ
+            if (self.shared.replay_buffer.len >= LEARNING_STARTS and
+                self.learn_tick % TRAIN_FREQ == 0):
+                self.train_step()
+
+            # Check for match end to save model
+            if self.shared.match_end_event.wait(timeout=0.01):
+                self.shared.match_end_event.clear()
+                self.save_checkpoint()
+                self.shared.match_number += 1
+
+            # Small sleep to prevent CPU spinning
+            time.sleep(0.001)
+
+        self.writer.close()
+        log_learner("[Learner] Training stopped")

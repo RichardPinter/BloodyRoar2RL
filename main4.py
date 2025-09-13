@@ -96,12 +96,12 @@ def log_debug(message, *args, **kwargs):
     logger.debug(message, *args, **kwargs)
 
 # ─── CONFIG ────────────────────────────────────────────────────────────────
-REGION        = (0, 0, 624, 548)      # x, y, width, height
-Y_HEALTH      = 116
-X1_P1, X2_P1  = 73, 292
-X1_P2, X2_P2  = 355, 574
-LEN_P1        = X2_P1 - X1_P1
-LEN_P2        = X2_P2 - X1_P2
+REGION = (0, 0, 624, 548)  # x, y, width, height
+Y_HEALTH = 116
+X1_P1, X2_P1 = 69, 288
+X1_P2, X2_P2 = 350, 569
+LEN_P1 = X2_P1 - X1_P1
+LEN_P2 = X2_P2 - X1_P2
 
 LOWER_BGR     = np.array([0,150,180], dtype=np.uint8)
 UPPER_BGR     = np.array([30,175,220], dtype=np.uint8)
@@ -115,7 +115,7 @@ DEVICE          = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LOG_CSV         = "health_results.csv"
 ACTIONS_FILE    = "actions.txt"
 MAX_FRAMES      = 1000
-GAMMA           = 0.99
+GAMMA           = 0.95 
 BATCH_SIZE      = 32
 TARGET_SYNC     = 1000
 REPLAY_SIZE     = 10000
@@ -211,6 +211,49 @@ def compute_black_stats(frame):
         }
     return pct_out, range_out
 
+
+
+TRANSFORM_IDX = ACTIONS.index("transform")
+
+def legal_mask_from_ts(ts):
+    """
+    Build a boolean mask [NUM_ACTIONS] from the on-screen transform state.
+    Allow 'transform' only if P1 == 'can transform' and not already 'transformed'.
+    """
+    p1 = ts.get("P1_R1_pixel", "unknown")
+    can_t = (p1 == "can transform")
+    is_t  = (p1 == "transformed")
+    allow_transform = can_t and (not is_t)
+
+    mask = np.ones(NUM_ACTIONS, dtype=bool)
+    if not allow_transform:
+        mask[TRANSFORM_IDX] = False
+    return mask
+
+def legal_mask_from_extras(extras_tensor):
+    """
+    Mask for a batch of next-states (used in learner() targets).
+    Works with either EXTRA_DIM==10 (one-hot) or 4 (scaled code).
+    Returns BoolTensor [B, NUM_ACTIONS].
+    """
+    device = extras_tensor.device
+    mask = torch.ones((extras_tensor.size(0), NUM_ACTIONS), dtype=torch.bool, device=device)
+
+    if EXTRA_DIM == 10:
+        # extras: [P1 onehot(4), P2 onehot(4), p1_black, p2_black]
+        p1_onehot = extras_tensor[:, 0:4]             # (B,4)
+        can_t        = p1_onehot[:, 0] > 0.5          # 'can transform'
+        transformed  = p1_onehot[:, 1] > 0.5          # 'transformed'
+        allow_transform = can_t & (~transformed)
+    else:
+        # extras[:,0] is code scaled to [0,1] by /3.0  -> recover 0..3
+        p1_code = (extras_tensor[:, 0] * 3.0).round().long().clamp(0, 3)
+        can_t        = p1_code.eq(0)
+        transformed  = p1_code.eq(1)
+        allow_transform = can_t & (~transformed)
+
+    mask[:, TRANSFORM_IDX] = allow_transform
+    return mask
 # ─── ROUND VALIDATION GUI ─────────────────────────────────────────────────
 class RoundValidationGUI:
     def __init__(self):
@@ -554,7 +597,7 @@ class RoundState:
                 self.first_to_zero_flag = None  # P2 recovered, reset flag
             
             # Track when both players are at zero - MORE PERMISSIVE (2% threshold)
-            if pct1 <= 2.0 and pct2 <= 2.0:
+            if pct1 <= 0.0 and pct2 <= 0.0:
                 if not self.both_at_zero:
                     self.both_at_zero = True
                     log_round(f"💀 BOTH AT ZERO: P1={pct1:.1f}% P2={pct2:.1f}% | Flag={self.first_to_zero_flag}")
@@ -793,7 +836,7 @@ def detect_round_indicators(frame):
 # ─── SETUP ───────────────────────────────────────────────────────────────
 import re
 
-EXTRA_DIM = 4  # [P1_state, P2_state, P1_black_pct, P2_black_pct]
+EXTRA_DIM = 10 #[P1_state, P2_state, P1_black_pct, P2_black_pct]
 policy_net = DQNNet(FRAME_STACK, NUM_ACTIONS, EXTRA_DIM).to(DEVICE).train()
 target_net = DQNNet(FRAME_STACK, NUM_ACTIONS, EXTRA_DIM).to(DEVICE)
 
@@ -1379,6 +1422,9 @@ def consumer():
             _, post_match_action_count = handle_menu_navigation("post_match", post_match_action_count)
 
         elif state == "active":
+            
+            
+            # buffer.add(prev_state, prev_extra_feats, prev_action, reward, next_state, next_extras, False)
             # ACTIVE → DQN actions
             round_steps += 1
             
@@ -1396,12 +1442,14 @@ def consumer():
                 ts = classify_transform_state(frame)
                 bp, _ = compute_black_stats(frame)
                 code = {'can transform':0, 'transformed':1, 'cannot transform':2, 'unknown':3}
-                next_extras = np.array([
-                    code[ts['P1_R1_pixel']],
-                    code[ts['P2_R2_pixel']],
-                    bp['P1_R1_area'] / 100.0,
-                    bp['P2_R2_area'] / 100.0
-                ], dtype=np.float32)
+                c1 = code[ts['P1_R1_pixel']]
+                c2 = code[ts['P2_R2_pixel']]
+                onehot1 = np.eye(4, dtype=np.float32)[c1]
+                onehot2 = np.eye(4, dtype=np.float32)[c2]
+                next_extras = np.concatenate([
+                    onehot1, onehot2,
+                    [bp['P1_R1_area'] / 100.0, bp['P2_R2_area'] / 100.0]
+                ]).astype(np.float32)
 
                 # C) Compute reward rₜ₊₁ from the last action
                 reward = 0.0
@@ -1434,31 +1482,30 @@ def consumer():
                         False
                     )
 
-                # E) ε-greedy action selection on the new state
-                state_img    = torch.from_numpy(next_state).unsqueeze(0).to(DEVICE)
-                extras_tensor= torch.from_numpy(next_extras).unsqueeze(0).to(DEVICE)
-                eps = 0.01 if TEST_MODE else max(0.01, 0.1 - 0.1 * (buffer.len / 10000))
-                
-                # Log epsilon
-                writer.add_scalar("exploration/epsilon", eps, global_step)
-                
+                # E) ε/Boltzmann selection on the new state WITH MASKING
+                state_img     = torch.from_numpy(next_state).unsqueeze(0).to(DEVICE)
+                extras_tensor = torch.from_numpy(next_extras).unsqueeze(0).to(DEVICE)
+
+                # build legality from current on-screen transform state
+                legal_mask = legal_mask_from_ts(ts)                     # np.bool_ [A]
+                legal_idx = np.flatnonzero(legal_mask)
+                if legal_idx.size == 0:                                 # safety: never all-illegal
+                    legal_mask[:] = True
+                    legal_idx = np.arange(NUM_ACTIONS)
+
+                eps = 0.01 if TEST_MODE else max(0.01, 0.30 - 0.29 * (buffer.len / 20000))
+
+                with torch.no_grad():
+                    q = policy_net(state_img, extras_tensor)            # [1, A]
+                    # push illegal actions to -inf so they can't win
+                    q = q.masked_fill(torch.tensor(~legal_mask, device=q.device).unsqueeze(0),
+                                    float("-inf"))
+
+                # exploration: only among legal actions
                 if random.random() < eps:
-                    chosen = random.randrange(NUM_ACTIONS)
+                    chosen = int(np.random.choice(legal_idx))
                 else:
-                    with torch.no_grad():
-                        q = policy_net(state_img, extras_tensor)
-                        
-                        # Log Q-values for each action
-                        for i, action_name in enumerate(ACTIONS):
-                            writer.add_scalar(f"q_values/{action_name}", q[0, i].item(), global_step)
-                        
-                        # Log Q-value statistics
-                        writer.add_scalar("q_values/mean", q.mean().item(), global_step)
-                        writer.add_scalar("q_values/max", q.max().item(), global_step)
-                        writer.add_scalar("q_values/min", q.min().item(), global_step)
-                        writer.add_scalar("q_values/std", q.std().item(), global_step)
-                        
-                        chosen = int(q.argmax(1).item())
+                    chosen = int(q.argmax(1).item())
                 
                 current_action = chosen
                 action_counts[chosen] += 1
@@ -1550,8 +1597,21 @@ def learner():
                                 dones_in_buffer.sum() / len(dones_in_buffer), train_steps)
 
             with torch.no_grad():
-                next_q = target_net(next_states, next_extras).max(1)[0]
+                
+                
+                # mask illegal actions in NEXT state for both online and target nets
+                mask_next      = legal_mask_from_extras(next_extras)            # [B, A]
+
+                q_online_next  = policy_net(next_states, next_extras)           # [B, A]
+                q_online_next  = q_online_next.masked_fill(~mask_next, float("-inf"))
+                next_actions   = q_online_next.argmax(1, keepdim=True)          # [B,1]
+
+                q_target_next  = target_net(next_states, next_extras)           # [B, A]
+                q_target_next  = q_target_next.masked_fill(~mask_next, float("-inf"))
+                next_q         = q_target_next.gather(1, next_actions).squeeze(1)
+
                 target = rewards + GAMMA * next_q * (1 - dones.float())
+                target = target.clamp(-3.0, 3.0)  # keep your target clamp
                 
                 # Log TD error statistics
                 current_q = policy_net(states, extras).gather(1, actions.unsqueeze(1)).squeeze(1)
