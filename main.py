@@ -14,7 +14,6 @@ from shared_state import SharedState
 from screen_capture import ScreenCapture
 from agent import GameAgent
 from trainer import Trainer
-from validation_gui import RoundValidationGUI
 
 class RLGameAgent:
     """Main orchestrator class that manages all components"""
