@@ -9,8 +9,8 @@ import threading
 import comtypes
 import dxcam
 from queue import Queue
-from config import REGION
-from logging_utils import log_state, log_debug
+from src.config import REGION
+from src.logging_utils import log_state, log_debug
 
 class ScreenCapture:
     """Manages DXCam screen capture in a separate thread"""

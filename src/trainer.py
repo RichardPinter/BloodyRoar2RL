@@ -9,10 +9,10 @@ import torch.nn as nn
 import re
 import os
 
-from config import *
-from logging_utils import log_learner, log_state
-from models import DQNNet  # kept for clarity; networks come from shared_state
-from game_vision import legal_mask_from_extras
+from src.config import *
+from src.logging_utils import log_learner, log_state
+from src.models import DQNNet  # kept for clarity; networks come from shared_state
+from src.game_vision import legal_mask_from_extras
 from torch.utils.tensorboard import SummaryWriter
 
 

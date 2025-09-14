@@ -6,8 +6,8 @@ Centralizes all shared resources and synchronization.
 import threading
 from queue import Queue
 from collections import deque
-from config import FRAME_STACK, REPLAY_SIZE, EXTRA_DIM, DEVICE
-from models import DQNNet, ReplayBuffer
+from src.config import FRAME_STACK, REPLAY_SIZE, EXTRA_DIM, DEVICE
+from src.models import DQNNet, ReplayBuffer
 
 class SharedState:
     """Manages all shared state between threads"""
@@ -85,5 +85,5 @@ class SharedState:
         self.stop_event.set()
 
 # Import after SharedState definition to avoid circular import
-from config import ACTIONS
+from src.config import ACTIONS
 ACTIONS_LEN = len(ACTIONS)

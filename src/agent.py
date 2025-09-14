@@ -11,10 +11,10 @@ import random
 import cv2
 from collections import deque
 
-from config import *
-from logging_utils import *
-from game_vision import detect_health, detect_round_indicators, compute_extra_features, classify_transform_state, legal_mask_from_ts
-from round_tracking import RoundState, MatchTracker
+from src.config import *
+from src.logging_utils import *
+from src.game_vision import detect_health, detect_round_indicators, compute_extra_features, classify_transform_state, legal_mask_from_ts
+from src.round_tracking import RoundState, MatchTracker
 from torch.utils.tensorboard import SummaryWriter
 
 

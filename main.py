@@ -8,12 +8,12 @@ import csv
 import threading
 import signal
 import sys
-from config import *
-from logging_utils import log_state
-from shared_state import SharedState
-from screen_capture import ScreenCapture
-from agent import GameAgent
-from trainer import Trainer
+from src.config import *
+from src.logging_utils import log_state
+from src.shared_state import SharedState
+from src.screen_capture import ScreenCapture
+from src.agent import GameAgent
+from src.trainer import Trainer
 
 class RLGameAgent:
     """Main orchestrator class that manages all components"""

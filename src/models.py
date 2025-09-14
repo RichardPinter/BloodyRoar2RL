@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from config import DEVICE, FRAME_STACK, CNN_SIZE, NUM_ACTIONS
+from src.config import DEVICE, FRAME_STACK, CNN_SIZE, NUM_ACTIONS
 
 class DQNNet(nn.Module):
     """Deep Q-Network architecture"""

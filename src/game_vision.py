@@ -5,14 +5,14 @@ Handles health bars, round indicators, and transform states.
 """
 import cv2
 import numpy as np
-from config import (
+from src.config import (
     Y_HEALTH, X1_P1, X2_P1, X1_P2, X2_P2, LEN_P1, LEN_P2,
     LOWER_BGR, UPPER_BGR, ROUND_INDICATORS,
     LOW1, HIGH1, LOW2, HIGH2, BLUE_LOW, BLUE_HIGH,
     PIXEL_RECTS, STATE_MAP, AREA_RECTS, BLACK_BGR,
     TRANSFORM_IDX, NUM_ACTIONS, EXTRA_DIM
 )
-from logging_utils import log_debug
+from src.logging_utils import log_debug
 import torch
 
 def detect_health(frame):

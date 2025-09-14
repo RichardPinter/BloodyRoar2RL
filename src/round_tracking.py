@@ -4,7 +4,7 @@ Round and match tracking logic for the game.
 Handles round detection, validation, and match progression.
 """
 import time
-from logging_utils import log_state, log_round, log_match, log_debug
+from src.logging_utils import log_state, log_round, log_match, log_debug
 
 
 class RoundState:

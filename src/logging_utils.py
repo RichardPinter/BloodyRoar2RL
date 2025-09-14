@@ -5,7 +5,7 @@ Provides structured logging for different components.
 """
 import logging
 from logging.handlers import RotatingFileHandler
-from config import ENABLE_LOGGING, LOG_FILENAME
+from src.config import ENABLE_LOGGING, LOG_FILENAME
 
 # ─── LOGGING SETUP ─────────────────────────────────────────────────────────
 # Create a custom logger
