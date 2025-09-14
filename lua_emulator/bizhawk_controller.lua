@@ -1,6 +1,6 @@
 -- Optimized controller with configurable polling rate
 
-local ACTIONS_FILE = "C:\\Users\\richa\\Desktop\\Personal\\Uni\\ShenLong\\actions.txt"
+local ACTIONS_FILE =  "C:/Users/richa/BloodyRoar2RL/lua_emulator/actions.txt"
 local frame_counter = 0
 
 -- CONFIGURE THIS: Lower = faster response but more CPU

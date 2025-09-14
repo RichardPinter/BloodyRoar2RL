@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Logging utilities for the RL game agent.
 Provides structured logging for different components.

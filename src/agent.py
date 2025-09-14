@@ -14,7 +14,8 @@ from collections import deque
 from src.config import *
 from src.logging_utils import *
 from src.game_vision import detect_health, detect_round_indicators, compute_extra_features, classify_transform_state, legal_mask_from_ts
-from src.round_logic.round_tracking import RoundState, MatchTracker
+from src.naive.round_state_naive import RoundStateLite as RoundState
+from src.naive.round_state_naive import MatchTrackerLite as MatchTracker
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -271,7 +272,7 @@ class GameAgent:
                 time_at_zero = time.time() - self.both_at_zero_since
                 if (pct1 >= ALIVE_THRESHOLD and pct2 >= ALIVE_THRESHOLD and
                         time_at_zero >= ZERO_HEALTH_DURATION):
-                    log_round("🎯 ROUND START DETECTED via health restoration!")
+                    log_round("ROUND START DETECTED via health restoration!")
                     self.both_at_zero_since = None
                     return True
                 self.both_at_zero_since = None
@@ -300,7 +301,7 @@ class GameAgent:
 
                 if time_lost >= HEALTH_LOST_TIMEOUT and self.state != "health_detection_lost":
                     self.state_before_fallback = self.state
-                    log_state(f"🚨 HEALTH DETECTION LOST - Entering fallback mode!")
+                    log_state(f"HEALTH DETECTION LOST - Entering fallback mode!")
                     self.state = "health_detection_lost"
                     self.fallback_action_count = 0
                     self.alive_since = None
@@ -310,7 +311,7 @@ class GameAgent:
         else:
             if self.state == "health_detection_lost":
                 if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
-                    log_state(f"✅ Health bars restored! Exiting fallback mode")
+                    log_state(f"Health bars restored! Exiting fallback mode")
                     self.recover_from_fallback(pct1, pct2)
 
 
@@ -328,11 +329,11 @@ class GameAgent:
 
     def handle_round_fallback(self, round_indicators, detected_p1_rounds, detected_p2_rounds, pct1, pct2):
         """Use indicator-based detection as a last resort."""
-        log_round("🔄 Using fallback indicator-based detection...")
+        log_round("Using fallback indicator-based detection...")
         old_result = self.round_state.update(detected_p1_rounds, detected_p2_rounds)
         if old_result and old_result[0] == "round_won":
             _, winner, p1_rounds, p2_rounds = old_result
-            log_round(f"✅ Fallback successful: {winner.upper()} wins via indicators!")
+            log_round(f"Fallback successful: {winner.upper()} wins via indicators!")
             self.validation_gui.request_validation(
                 system_prediction=f"{winner.upper()}_FALLBACK",
                 p1_health=pct1, p2_health=pct2,
@@ -340,7 +341,7 @@ class GameAgent:
                 both_at_zero=True
             )
             return old_result
-        log_round("❌ Fallback failed - no clear winner")
+        log_round("Fallback failed - no clear winner")
         return None
 
     def handle_round_completion(self, round_result):
@@ -351,7 +352,7 @@ class GameAgent:
         match_result = self.match_tracker.check_match_end(p1_rounds, p2_rounds)
         if match_result and match_result[0] == "match_over":
             self.shared.signal_match_end()
-            log_state("🎯 Match over! Entering post-match navigation...")
+            log_state("Match over! Entering post-match navigation...")
             self.state = "post_match_waiting"
             self.round_state.clear_all_candidates()
             self.alive_since = None
@@ -377,7 +378,7 @@ class GameAgent:
             if not self.round_state.has_round_recently_ended(timeout=1.0):
                 self.alive_since = self.alive_since or time.time()
                 if time.time() - self.alive_since >= 0.5:
-                    log_round("🚀 FIRST ROUND OF MATCH STARTED!")
+                    log_round("FIRST ROUND OF MATCH STARTED!")
                     self.start_round()
             else:
                 self.alive_since = None
@@ -388,7 +389,7 @@ class GameAgent:
         if pct1 >= HEALTH_LIMIT and pct2 >= HEALTH_LIMIT:
             self.alive_since = self.alive_since or time.time()
             if time.time() - self.alive_since >= 0.3:
-                log_round("🚀 NEXT ROUND STARTED!")
+                log_round("NEXT ROUND STARTED!")
                 self.start_round()
         else:
             self.alive_since = None

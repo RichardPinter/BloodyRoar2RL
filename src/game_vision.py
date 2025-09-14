@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Computer vision functions for game state detection.
 Handles health bars, round indicators, and transform states.

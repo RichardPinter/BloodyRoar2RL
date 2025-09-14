@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Screen capture module using DXCam.
 Handles high-performance game frame capture.
@@ -22,22 +21,22 @@ class ScreenCapture:
         self.thread = None
         self.start_time = None
         
-    def initialize(self):
-        """Initialize DXCam camera"""
-        comtypes.CoInitialize()
+    def initialise(self):
+        """Initialise DXCam camera"""
+        comtypes.CoInitialise()
         self.camera = dxcam.create(output_color="BGR")
         self.camera.start(target_fps=60, region=REGION, video_mode=True)
         
         # Register cleanup
         atexit.register(self.cleanup)
         
-        log_state(f"📷 Screen capture initialized: Region {REGION}, 60 FPS target")
+        log_state(f"Screen capture initialised: Region {REGION}, 60 FPS target")
         
     def cleanup(self):
         """Clean up DXCam resources"""
         if self.camera:
             self.camera.stop()
-        comtypes.CoUninitialize()
+        comtypes.CoUninitialise()
         log_debug("Screen capture cleaned up")
     
     def producer_loop(self):
@@ -54,7 +53,7 @@ class ScreenCapture:
                     frames_captured += 1
                     
                     # Log stats periodically
-                    if frames_captured % 600 == 0:  # Every ~10 seconds at 60fps
+                    if frames_captured % 600 == 0:  # Every 10 seconds at 60fps
                         elapsed = time.perf_counter() - self.start_time
                         fps = frames_captured / elapsed
                         log_debug(f"Capture stats: {frames_captured} frames, {fps:.1f} FPS avg")
@@ -66,7 +65,7 @@ class ScreenCapture:
     
     def start(self):
         """Start the capture thread"""
-        self.initialize()
+        self.initialise()
         self.thread = threading.Thread(
             target=self.producer_loop,
             name="ScreenCapture",

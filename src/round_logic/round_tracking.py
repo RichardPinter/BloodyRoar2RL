@@ -89,10 +89,10 @@ class RoundState:
         self.confirmed[winner] += 1
 
         log_round(
-            f"🎯 ROUND END: {winner.upper()} WINS! "
+            f"ROUND END: {winner.upper()} WINS! "
             f"({self.first_to_zero_flag.upper()} went to zero first) [{reason}]"
         )
-        log_round(f"📊 Score: P1={self.confirmed['p1']} P2={self.confirmed['p2']}")
+        log_round(f"Score: P1={self.confirmed['p1']} P2={self.confirmed['p2']}")
 
         if validation_callback:
             validation_callback(
@@ -144,25 +144,25 @@ class RoundState:
             # Establish first-to-zero flag (≤2%)
             if pct1 <= 2.0 and pct2 > 2.0 and self.first_to_zero_flag is None:
                 self.first_to_zero_flag = 'p1'
-                log_round(f"🚩 FLAG SET: P1 went to zero first! (P1={pct1:.1f}% P2={pct2:.1f}%)")
+                log_round(f"FLAG SET: P1 went to zero first! (P1={pct1:.1f}% P2={pct2:.1f}%)")
             elif pct2 <= 2.0 and pct1 > 2.0 and self.first_to_zero_flag is None:
                 self.first_to_zero_flag = 'p2'
-                log_round(f"🚩 FLAG SET: P2 went to zero first! (P1={pct1:.1f}% P2={pct2:.1f}%)")
+                log_round(f"FLAG SET: P2 went to zero first! (P1={pct1:.1f}% P2={pct2:.1f}%)")
             elif pct1 <= 2.0 and pct2 <= 2.0 and self.first_to_zero_flag is None:
                 # Simultaneous → tie-break using previous frame
                 log_round(
-                    f"⚠️ SIMULTANEOUS ZERO: P1={pct1:.1f}% P2={pct2:.1f}%, "
+                    f"SIMULTANEOUS ZERO: P1={pct1:.1f}% P2={pct2:.1f}%, "
                     f"prev P1={self.prev_pct1:.1f}% P2={self.prev_pct2:.1f}%"
                 )
                 if self.prev_pct1 < self.prev_pct2:
                     self.first_to_zero_flag = 'p1'
-                    log_round("🚩 FLAG SET: P1 was closer to zero on previous frame")
+                    log_round("FLAG SET: P1 was closer to zero on previous frame")
                 elif self.prev_pct2 < self.prev_pct1:
                     self.first_to_zero_flag = 'p2'
-                    log_round("🚩 FLAG SET: P2 was closer to zero on previous frame")
+                    log_round("FLAG SET: P2 was closer to zero on previous frame")
                 else:
                     self.first_to_zero_flag = 'p1'  # deterministic fallback
-                    log_round("🚩 FLAG SET: Exactly tied; defaulting to P1")
+                    log_round("FLAG SET: Exactly tied; defaulting to P1")
 
             # Allow pre-both-zero recovery to clear a false alarm
             if self.first_to_zero_flag == 'p1' and pct1 > 50.0 and pct2 > 50.0 and not self.both_at_zero:
@@ -177,7 +177,7 @@ class RoundState:
                 if not self.both_at_zero:
                     self.both_at_zero = True
                     self.zero_bars_since = time.time()
-                    log_round(f"💀 BOTH AT ZERO: P1={pct1:.1f}% P2={pct2:.1f}% | Flag={self.first_to_zero_flag}")
+                    log_round(f"BOTH AT ZERO: P1={pct1:.1f}% P2={pct2:.1f}% | Flag={self.first_to_zero_flag}")
                 else:
                     if (self.first_to_zero_flag is not None and
                         self.zero_bars_since and
@@ -198,7 +198,7 @@ class RoundState:
                         self.full_hold_armed = True
                         self.health_full_since = time.time()
                         log_round(
-                            f"🟩 FULL HEALTH ARMED: P1={pct1:.1f}% P2={pct2:.1f}% "
+                            f"FULL HEALTH ARMED: P1={pct1:.1f}% P2={pct2:.1f}% "
                             f"| Flag={self.first_to_zero_flag} | Hold={self.FULL_HOLD_SEC:.2f}s"
                         )
                     else:
@@ -220,7 +220,7 @@ class RoundState:
                     if self.full_hold_armed:
                         held = time.time() - (self.health_full_since or time.time())
                         log_debug(
-                            f"🟥 FULL HEALTH ABORTED after {held:.2f}s "
+                            f"FULL HEALTH ABORTED after {held:.2f}s "
                             f"(need {self.FULL_HOLD_SEC:.2f}s). Now P1={pct1:.1f}% P2={pct2:.1f}%"
                         )
                     self.full_hold_armed = False
@@ -242,7 +242,7 @@ class RoundState:
         If we had a first_to_zero_flag, lock in the round winner now.
         """
         if self.first_to_zero_flag is None:
-            log_round("ℹ️ Restoration seen but no first_to_zero_flag — cannot confirm previous round.")
+            log_round("ℹRestoration seen but no first_to_zero_flag — cannot confirm previous round.")
             return None
         return self._confirm_from_flag("restoration", pct1, pct2, validation_callback)
 
@@ -255,7 +255,7 @@ class RoundState:
         if self.first_to_zero_flag is None:
             return None
         if missing_secs >= threshold_sec:
-            log_round(f"⏱️ Health bars hidden for {missing_secs:.1f}s — confirming round by flag.")
+            log_round(f"Health bars hidden for {missing_secs:.1f}s — confirming round by flag.")
             # We don't have meaningful pct values here; use zeros for logging.
             return self._confirm_from_flag("long_zero_missing", 0.0, 0.0, validation_callback)
         return None
@@ -287,13 +287,13 @@ class RoundState:
                 if c['count'] == det[p]:
                     elapsed = now - c['start']
                     if elapsed < 0.1 or int(elapsed * 10) != int((elapsed - 0.016) * 10):
-                        log_debug(f"⏳ [Candidate {p.upper()}] {det['p1']}-{det['p2']} ({elapsed:.1f}s) - waiting…")
+                        log_debug(f"[Candidate {p.upper()}] {det['p1']}-{det['p2']} ({elapsed:.1f}s) - waiting…")
                 else:
                     self.cand[p] = {'count': det[p], 'start': now}
                     log_debug(f"🔍 [New Candidate {p.upper()}] count={det[p]} > confirmed={self.confirmed[p]} - starting timer")
             else:
                 if self.cand[p]['count'] is not None:
-                    log_debug(f"🚫 [Cleared Candidate {p.upper()}] detected {det[p]} <= confirmed {self.confirmed[p]}")
+                    log_debug(f"[Cleared Candidate {p.upper()}] detected {det[p]} <= confirmed {self.confirmed[p]}")
                 self.clear_candidate(p)
 
         ready = [
@@ -306,18 +306,18 @@ class RoundState:
 
         winner, start_ts = min(ready, key=lambda x: x[1])
         if len(ready) > 1:
-            log_debug(f"⚠️ Both timers ready—choosing first player: {winner.upper()}")
+            log_debug(f"Both timers ready—choosing first player: {winner.upper()}")
 
         old_p1, old_p2 = self.confirmed['p1'], self.confirmed['p2']
         new_count = self.cand[winner]['count']
         if new_count != self.confirmed[winner] + 1:
-            log_debug(f"⚠️ FINAL VALIDATION FAILED: {winner.upper()} would jump from {self.confirmed[winner]} to {new_count}")
+            log_debug(f"FINAL VALIDATION FAILED: {winner.upper()} would jump from {self.confirmed[winner]} to {new_count}")
             self.clear_all_candidates()
             return None
 
         self.confirmed[winner] = new_count
         self.last_round_end_time = now
-        log_round(f"🎯 ROUND CONFIRMED: {winner.upper()} won! "
+        log_round(f"ROUND CONFIRMED: {winner.upper()} won! "
                   f"(P1:{self.confirmed['p1']} P2:{self.confirmed['p2']}) "
                   f"[was P1:{old_p1} P2:{old_p2}]")
         self.clear_all_candidates()
@@ -343,15 +343,15 @@ class MatchTracker:
         if p1_rounds >= 2:
             self.p1_match_wins += 1
             result = ("match_over", "p1")
-            log_match(f"🏁 MATCH #{self.match_number} OVER: P1 wins {p1_rounds}-{p2_rounds}!")
-            log_match(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
+            log_match(f"MATCH #{self.match_number} OVER: P1 wins {p1_rounds}-{p2_rounds}!")
+            log_match(f"Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
             self.match_number += 1
             return result
         elif p2_rounds >= 2:
             self.p2_match_wins += 1
             result = ("match_over", "p2")
-            log_match(f"🏁 MATCH #{self.match_number} OVER: P2 wins {p1_rounds}-{p2_rounds}!")
-            log_match(f"📊 Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
+            log_match(f"MATCH #{self.match_number} OVER: P2 wins {p1_rounds}-{p2_rounds}!")
+            log_match(f"Overall Matches: P1:{self.p1_match_wins} P2:{self.p2_match_wins}")
             self.match_number += 1
             return result
         return None

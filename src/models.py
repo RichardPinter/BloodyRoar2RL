@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Neural network models and replay buffer for the RL agent.
 """

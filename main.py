@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-Main orchestrator for the RL game agent.
-Starts and coordinates all components.
-"""
 import time
 import csv
 import threading
@@ -27,10 +22,10 @@ class RLGameAgent:
         
         self.log_startup_info()
         
-        # Initialize shared state
+        # Initialise shared state
         self.shared_state = SharedState()
         
-        # Initialize components
+        # Initialise components
         self.screen_capture = ScreenCapture(
             self.shared_state.frame_queue,
             self.shared_state.stop_event
@@ -38,8 +33,7 @@ class RLGameAgent:
         
         self.agent = GameAgent(self.shared_state)
         self.trainer = Trainer(self.shared_state)
-        # self.validation_gui = RoundValidationGUI()
-        
+                
         # Thread handles
         self.threads = []
         
@@ -76,6 +70,7 @@ class RLGameAgent:
     
     def start_threads(self):
         """Start all worker threads"""
+        
         # Start screen capture
         self.screen_capture.start()
         
@@ -104,11 +99,11 @@ class RLGameAgent:
         self.start_threads()
         
         try:
-            # Main loop - just keep alive and monitor
+            # Main loop - Keep things alive
             while True:
                 time.sleep(1)
                 
-                # Optional: Add periodic status logging here
+                # Periodic logging
                 if self.shared_state.global_step % 3600 == 0 and self.shared_state.global_step > 0:
                     self.log_status()
                 
@@ -139,18 +134,7 @@ class RLGameAgent:
         # Wait for screen capture
         self.screen_capture.join()
         
-        # Save final results
-        self.save_results()
-        
         log_state("Shutdown complete")
-    
-    def save_results(self):
-        """Save final results to CSV"""
-        # Save health readings
-        with open(LOG_CSV, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["time_s", "p1_pct", "p2_pct"])
-            writer.writerows(self.shared_state.results)
         
         log_state(f"Saved {len(self.shared_state.results)} health readings")
         

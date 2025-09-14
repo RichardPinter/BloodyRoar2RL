@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Configuration module for the RL game agent.
 All constants, hyperparameters, and settings in one place.
@@ -18,7 +17,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 ENABLE_LOGGING = True
 LOG_FILENAME = os.path.join(LOG_DIR, f"game_debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
 LOG_CSV = "health_results.csv"
-ACTIONS_FILE = "actions.txt"
+ACTIONS_FILE = "lua_emulator/actions.txt"
 ROUND_VALIDATION_LOG = "round_validation.csv"
 
 # ─── CAPTURE REGION ─────────────────────────────────────────────────────
